@@ -1186,9 +1186,10 @@ def render_stock_decode_page():
                     st.error("⚠️ 请先在侧边栏配置 API 密钥")
                     return
                 prompt_template = PromptManager.get_prompt("stock_deep_decode")
-                result = st.session_state.api_client.analyze_stock_deep_decode(
+                result_text = st.session_state.api_client.analyze_stock_deep_decode(
                     stock_input, prompt_template
                 )
+                result = parse_json_response(result_text)
 
                 if "error" in result:
                     st.error(f"❌ 分析失败: {result['error']}")
