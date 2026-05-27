@@ -1182,9 +1182,11 @@ def render_stock_decode_page():
     if analyze_btn and stock_input:
         with st.spinner("🔄 AI 正在深度分析，请稍候..."):
             try:
-                api_client = get_api_client()
+                if not st.session_state.api_client:
+                    st.error("⚠️ 请先在侧边栏配置 API 密钥")
+                    return
                 prompt_template = PromptManager.get_prompt("stock_deep_decode")
-                result = api_client.analyze_stock_deep_decode(
+                result = st.session_state.api_client.analyze_stock_deep_decode(
                     stock_input, prompt_template
                 )
 
