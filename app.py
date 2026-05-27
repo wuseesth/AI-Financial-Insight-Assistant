@@ -823,8 +823,12 @@ def render_hotspot_result(result: Dict[str, Any]):
 # ============================================================
 def render_stock_decode_result(result: Dict[str, Any]):
     """渲染股票深度解码分析结果"""
-    # 结构完整性校验
-    required_parts = ["part1_market_identity", "part2_price_action", "part3_drivers_sentiment", "part4_outlook_strategy"]
+    # 结构完整性校验（兼容新旧版本）
+    old_parts = ["part1_market_identity", "part2_price_action", "part3_drivers_sentiment", "part4_outlook_strategy"]
+    new_parts = ["part1_market_identity", "part2_price_action", "part3_technical_analysis", "part4_drivers_sentiment", "part5_outlook_strategy"]
+    # 判断是旧版（4部分）还是新版（5部分）结构
+    is_new_structure = "part3_technical_analysis" in result
+    required_parts = new_parts if is_new_structure else old_parts
     missing_parts = [p for p in required_parts if p not in result]
     if missing_parts:
         st.warning(f"⚠️ 分析结果部分缺失: {', '.join(missing_parts)}，显示已有内容")
@@ -950,13 +954,90 @@ def render_stock_decode_result(result: Dict[str, Any]):
             unsafe_allow_html=True,
         )
 
-    # ===== 第三部分：核心驱动力与舆情情绪拆解 =====
-    part3 = result.get("part3_drivers_sentiment", {})
-    if part3:
-        st.markdown("## 💣 第三部分：核心驱动力与舆情情绪拆解")
+        # 量价关系分析（新版增强字段）
+        vp = part2.get("volume_price_analysis", "")
+        if vp:
+            st.markdown(
+                f'<div class="result-section" style="border-left-color:#E040FB;">'
+                f'<div class="result-label">📊 量价关系深度分析</div>'
+                f'<div class="result-value">{vp}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ===== 第三部分：技术面深度分析（新版） =====
+    part3_tech = result.get("part3_technical_analysis", {})
+    if part3_tech and isinstance(part3_tech, dict):
+        st.markdown("## 📐 第三部分：技术面深度分析")
         st.markdown("---")
 
-        drivers = part3.get("driver_types", {})
+        trend = part3_tech.get("trend_analysis", {})
+        if trend and isinstance(trend, dict):
+            st.markdown("### 🔹 趋势研判")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#00A3FF;">'
+                    f'<div class="result-label">短期趋势（5/10/20日均线）</div>'
+                    f'<div class="result-value">{trend.get("short_term_trend", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#FFC107;">'
+                    f'<div class="result-label">中期趋势（60日均线）</div>'
+                    f'<div class="result-value">{trend.get("mid_term_trend", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            key_levels = trend.get("key_levels", "")
+            if key_levels:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#FF9800;">'
+                    f'<div class="result-label">🎯 关键价位分析</div>'
+                    f'<div class="result-value">{key_levels}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        momentum = part3_tech.get("momentum_indicators", {})
+        if momentum and isinstance(momentum, dict):
+            st.markdown("### 🔹 动量指标")
+            cols = st.columns(3)
+            indicators = [
+                ("MACD", momentum.get("macd", ""), "#00D4AA"),
+                ("KDJ", momentum.get("kdj", ""), "#00A3FF"),
+                ("RSI", momentum.get("rsi", ""), "#FFC107"),
+            ]
+            for i, (label, val, color) in enumerate(indicators):
+                with cols[i]:
+                    st.markdown(
+                        f'<div class="metric-card" style="border-top:3px solid {color};">'
+                        f'<div class="metric-label">{label}</div>'
+                        f'<div class="result-value" style="font-size:0.95rem;">{val}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+        vol_insight = part3_tech.get("volume_insight", "")
+        if vol_insight:
+            st.markdown("### 🔹 成交量能分析")
+            st.markdown(
+                f'<div class="result-section" style="border-left-color:#E040FB;">'
+                f'<div class="result-value">{vol_insight}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ===== 第四部分：核心驱动力与舆情情绪拆解 =====
+    # 兼容旧版（part3_drivers_sentiment）和新版（part4_drivers_sentiment）
+    part4 = result.get("part4_drivers_sentiment", result.get("part3_drivers_sentiment", {}))
+    if part4:
+        st.markdown("## 💣 第四部分：核心驱动力与舆情情绪拆解")
+        st.markdown("---")
+
+        drivers = part4.get("driver_types", {})
         if drivers:
             st.markdown("### 🔹 驱动力分类")
             for d_key, d_val in drivers.items():
@@ -970,7 +1051,7 @@ def render_stock_decode_result(result: Dict[str, Any]):
                     unsafe_allow_html=True,
                 )
 
-        sentiment = part3.get("market_sentiment", {})
+        sentiment = part4.get("market_sentiment", {})
         if sentiment:
             st.markdown("### 🔹 市场情绪量化模拟")
             st.markdown(
@@ -990,13 +1071,25 @@ def render_stock_decode_result(result: Dict[str, Any]):
                     unsafe_allow_html=True,
                 )
 
-    # ===== 第四部分：空间博弈与多空展望 =====
-    part4 = result.get("part4_outlook_strategy", {})
-    if part4:
-        st.markdown("## 🚀 第四部分：空间博弈与多空展望")
+        # crowd_behavior 字段（新版增强）
+        crowd = sentiment.get("crowd_behavior", "")
+        if crowd:
+            st.markdown(
+                f'<div class="result-section" style="border-left-color:#E040FB;">'
+                f'<div class="result-label">👥 散户/机构情绪分化</div>'
+                f'<div class="result-value">{crowd}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ===== 第五部分：空间博弈与多空展望 =====
+    # 兼容旧版（part4_outlook_strategy）和新版（part5_outlook_strategy）
+    part5 = result.get("part5_outlook_strategy", result.get("part4_outlook_strategy", {}))
+    if part5:
+        st.markdown("## 🚀 第五部分：空间博弈与多空展望")
         st.markdown("---")
 
-        tech = part4.get("technical_levels", {})
+        tech = part5.get("technical_levels", {})
         if tech:
             st.markdown("### 🔹 技术面心理位")
             col1, col2 = st.columns(2)
@@ -1016,8 +1109,18 @@ def render_stock_decode_result(result: Dict[str, Any]):
                     f'</div>',
                     unsafe_allow_html=True,
                 )
+            # 止损参考位（新版增强）
+            stop_loss = tech.get("stop_loss", "")
+            if stop_loss:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#FF4D4D;">'
+                    f'<div class="result-label" style="color:#FF4D4D;">🛑 止损参考位</div>'
+                    f'<div class="result-value">{stop_loss}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
-        rr = part4.get("risk_reward_ratio", {})
+        rr = part5.get("risk_reward_ratio", {})
         if rr:
             st.markdown("### 🔹 涨跌幅空间评估（风险收益比）")
             col1, col2, col3 = st.columns(3)
@@ -1046,7 +1149,7 @@ def render_stock_decode_result(result: Dict[str, Any]):
                     unsafe_allow_html=True,
                 )
 
-        strategy = part4.get("strategy_advice", {})
+        strategy = part5.get("strategy_advice", {})
         if strategy:
             st.markdown("### 🔹 操盘策略建议")
             col1, col2 = st.columns(2)
@@ -1063,6 +1166,46 @@ def render_stock_decode_result(result: Dict[str, Any]):
                     f'<div class="result-section" style="border-left-color:#00A3FF;">'
                     f'<div class="result-label">💎 中线价值投资者</div>'
                     f'<div class="result-value">{strategy.get("mid_term", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            # 风险管理（新版增强）
+            risk_mgmt = strategy.get("risk_management", "")
+            if risk_mgmt:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#FF4D4D;border-left-width:4px;">'
+                    f'<div class="result-label" style="color:#FF4D4D;">⚠️ 风险管理建议</div>'
+                    f'<div class="result-value">{risk_mgmt}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        # 情景分析（新版增强）
+        scenario = part5.get("scenario_analysis", {})
+        if scenario and isinstance(scenario, dict):
+            st.markdown("### 🔹 情景分析")
+            sc_col1, sc_col2, sc_col3 = st.columns(3)
+            with sc_col1:
+                st.markdown(
+                    f'<div class="metric-card" style="border-top:3px solid #00D4AA;">'
+                    f'<div class="metric-label" style="color:#00D4AA;">📈 乐观情景</div>'
+                    f'<div class="result-value" style="font-size:0.85rem;">{scenario.get("bull_case", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with sc_col2:
+                st.markdown(
+                    f'<div class="metric-card" style="border-top:3px solid #FF4D4D;">'
+                    f'<div class="metric-label" style="color:#FF4D4D;">📉 悲观情景</div>'
+                    f'<div class="result-value" style="font-size:0.85rem;">{scenario.get("bear_case", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with sc_col3:
+                st.markdown(
+                    f'<div class="metric-card" style="border-top:3px solid #FFC107;">'
+                    f'<div class="metric-label" style="color:#FFC107;">⚖️ 基准情景</div>'
+                    f'<div class="result-value" style="font-size:0.85rem;">{scenario.get("base_case", "")}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -1295,6 +1438,115 @@ def render_stock_decode_page():
                     })
 
                     render_stock_decode_result(result)
+
+                    # ===== 嵌入 K 线图行情 =====
+                    st.markdown("---")
+                    st.markdown(
+                        '<div class="app-header" style="font-size:1.5rem;">📈 实时行情 K 线图</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f'<div class="app-subtitle">基于 AKShare 实时数据 — {stock_input} 行情走势</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # 周期选择
+                    period_map = {
+                        "1m": "近1个月",
+                        "3m": "近3个月",
+                        "6m": "近6个月",
+                        "1y": "近1年",
+                        "2y": "近2年",
+                        "5y": "近5年",
+                    }
+                    kline_period = st.selectbox(
+                        "选择时间范围",
+                        options=list(period_map.keys()),
+                        format_func=lambda x: period_map[x],
+                        index=3,
+                        key=f"kline_period_{stock_input}",
+                    )
+
+                    with st.spinner(f"📡 正在获取 {stock_input} 行情数据..."):
+                        try:
+                            service = MarketDataService()
+                            df = service.get_stock_history(
+                                symbol=stock_input.strip(),
+                                period=kline_period,
+                            )
+
+                            if df is not None and not df.empty:
+                                # 获取股票基本信息
+                                info = service.get_stock_info(stock_input.strip())
+
+                                # 显示基本信息
+                                if info and not info.get("error"):
+                                    market_tag = {"A股": "🇨🇳", "港股": "🇭🇰", "美股": "🇺🇸"}.get(
+                                        info.get("market", ""), ""
+                                    )
+                                    st.markdown(
+                                        f'<div class="card" style="text-align: center; padding: 1rem;">'
+                                        f'<span style="font-size: 1.5rem; font-weight: 700; color: #00D4AA;">'
+                                        f'{market_tag} {info.get("name", stock_input)} ({stock_input})</span>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                    cols = st.columns(4)
+                                    with cols[0]:
+                                        st.metric("最新价", info.get("price", "—"))
+                                    with cols[1]:
+                                        change = info.get("change", "—")
+                                        change_str = f"{change}%" if change != "—" else "—"
+                                        st.metric("涨跌幅", change_str)
+                                    with cols[2]:
+                                        st.metric("成交量", info.get("volume", "—"))
+                                    with cols[3]:
+                                        st.metric("成交额", info.get("amount", "—"))
+
+                                # 绘制 K 线图
+                                fig = service.plot_candlestick(df, stock_input.strip())
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # 数据统计
+                                st.markdown("### 📊 区间数据统计")
+                                latest = df.iloc[-1]
+                                period_high = df["high"].max()
+                                period_low = df["low"].min()
+                                period_avg = df["close"].mean()
+                                period_change = (
+                                    (df["close"].iloc[-1] - df["close"].iloc[0])
+                                    / df["close"].iloc[0]
+                                    * 100
+                                )
+
+                                stat_cols = st.columns(5)
+                                with stat_cols[0]:
+                                    st.metric("区间最高", f"{period_high:.2f}")
+                                with stat_cols[1]:
+                                    st.metric("区间最低", f"{period_low:.2f}")
+                                with stat_cols[2]:
+                                    st.metric("区间均价", f"{period_avg:.2f}")
+                                with stat_cols[3]:
+                                    st.metric(
+                                        "区间涨跌幅",
+                                        f"{period_change:+.2f}%",
+                                    )
+                                with stat_cols[4]:
+                                    st.metric(
+                                        "最新收盘",
+                                        f"{latest['close']:.2f}",
+                                    )
+                            else:
+                                st.warning(f"⚠️ 未获取到 {stock_input} 的实时行情数据，请检查股票代码是否正确")
+
+                        except Exception as kline_err:
+                            st.warning(f"⚠️ 行情数据获取失败: {str(kline_err)}")
+                            st.info(
+                                "💡 提示：行情数据为辅助参考，不影响 AI 分析结果。"
+                                "A 股直接输入代码（如 600519），港股加 .HK 后缀（如 0700.HK），"
+                                "美股输入英文代码（如 AAPL）"
+                            )
 
             except Exception as e:
                 st.error(f"❌ 分析失败: {str(e)}")
