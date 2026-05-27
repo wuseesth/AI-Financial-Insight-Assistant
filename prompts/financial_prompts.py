@@ -218,6 +218,51 @@ STOCK_DEEP_DECODE_PROMPT = """
 """
 
 # ============================================================
+# 多股票对比分析 Prompt
+# ============================================================
+
+STOCK_COMPARISON_PROMPT = """
+你是一位拥有 CFA 资格的资深量化策略师。请对以下多只股票进行横向对比分析。
+
+## 分析要求
+请严格按照以下 JSON 格式输出对比分析报告：
+
+{{
+    "comparison_table": [
+        {{
+            "stock_name": "股票名称",
+            "stock_code": "股票代码",
+            "market": "所属市场（A股主板/科创板/创业板/北交所/港股/美股）",
+            "exchange": "交易所",
+            "sector": "所属行业板块",
+            "price_limit": "涨跌幅限制",
+            "settlement": "结算方式（T+0/T+1）",
+            "short_selling": "是否支持融券做空",
+            "min_tick": "最小变动单位",
+            "listing_requirements": "上市制度（核准制/注册制）",
+            "regulator": "监管机构",
+            "investor_threshold": "投资者门槛"
+        }}
+    ],
+    "key_differences": [
+        "关键差异点1：...",
+        "关键差异点2：...",
+        "关键差异点3：..."
+    ],
+    "cross_market_arbitrage": "跨市场套利机会分析（如适用）",
+    "investment_strategy": "基于对比的投资策略建议",
+    "risk_warnings": [
+        "风险提示1",
+        "风险提示2"
+    ],
+    "disclaimer": "免责声明"
+}}
+
+## 待分析股票
+{user_stock_input}
+"""
+
+# ============================================================
 # Prompt 管理类
 # ============================================================
 
@@ -244,6 +289,11 @@ class PromptManager:
             "name": "股票深度解码",
             "template": STOCK_DEEP_DECODE_PROMPT,
             "description": "对股票代码进行多维度深度解码分析（市场归属、异动规则、资金行为、策略建议）",
+        },
+        "stock_comparison": {
+            "name": "多股票对比分析",
+            "template": STOCK_COMPARISON_PROMPT,
+            "description": "对多只股票进行横向对比分析（市场归属、交易规则、估值、策略）",
         },
     }
 

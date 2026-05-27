@@ -241,6 +241,33 @@ class APIClient:
         ]
         return self.chat(messages, temperature=0.3, max_tokens=8192)
 
+    def analyze_stock_comparison(self, stock_input: str, prompt_template: str) -> str:
+        """
+        多股票对比分析
+
+        Args:
+            stock_input: 多个股票代码或名称（逗号/空格/换行分隔）
+            prompt_template: 分析提示词模板
+
+        Returns:
+            对比分析结果
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是一位拥有 CFA 资格的资深量化策略师，精通全球主要股票市场的"
+                    "上市制度、交易规则、监管框架。请对用户提供的多只股票进行横向对比分析，"
+                    "输出结构化的 JSON 对比报告。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt_template.format(user_stock_input=stock_input),
+            },
+        ]
+        return self.chat(messages, temperature=0.3, max_tokens=8192)
+
 
 def get_available_backends() -> List[str]:
     """获取可用的 API 后端列表"""

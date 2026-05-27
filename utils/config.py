@@ -66,6 +66,12 @@ class AppConfig:
             "description": "CFA视角多维度深度解码（市场归属、异动规则、资金行为、策略建议）",
             "enabled": True,
         },
+        "stock_comparison": {
+            "name": "📊 多股票对比分析",
+            "icon": "📊",
+            "description": "对多只股票进行横向对比分析（市场归属、交易规则、估值、策略）",
+            "enabled": True,
+        },
     }
 
     @classmethod

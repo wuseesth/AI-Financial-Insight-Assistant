@@ -418,6 +418,13 @@ def render_analysis_result(result: Dict[str, Any], analysis_type: str):
             st.error(f"❌ 渲染分析结果时出错: {str(e)}")
             with st.expander("查看原始返回数据"):
                 st.json(result)
+    elif analysis_type == "stock_comparison":
+        try:
+            render_stock_comparison_result(result)
+        except Exception as e:
+            st.error(f"❌ 渲染分析结果时出错: {str(e)}")
+            with st.expander("查看原始返回数据"):
+                st.json(result)
 
 
 def render_news_result(result: Dict[str, Any]):
@@ -1224,6 +1231,172 @@ def render_stock_decode_page():
         st.warning("⚠️ 请输入股票名称或代码")
 
 
+# ============================================================
+def render_stock_comparison_result(result: Dict[str, Any]):
+    """渲染多股票对比分析结果"""
+    # 结构校验
+    if "comparison_table" not in result:
+        st.warning("⚠️ 对比数据缺失，显示已有内容")
+
+    st.markdown('<div class="result-card">', unsafe_allow_html=True)
+
+    # ===== 对比表格 =====
+    table = result.get("comparison_table", [])
+    if table and isinstance(table, list):
+        st.markdown("## 📊 多股票横向对比")
+        st.markdown("---")
+
+        # 提取所有字段作为表头
+        if table:
+            headers = list(table[0].keys())
+            header_labels = {
+                "stock_name": "股票名称", "stock_code": "代码", "market": "所属市场",
+                "exchange": "交易所", "sector": "行业板块", "price_limit": "涨跌幅限制",
+                "settlement": "结算方式", "short_selling": "融券做空",
+                "min_tick": "最小变动单位", "listing_requirements": "上市制度",
+                "regulator": "监管机构", "investor_threshold": "投资者门槛",
+            }
+
+            # 用 HTML 表格渲染
+            table_html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+            # 表头
+            table_html += '<thead><tr>'
+            for h in headers:
+                label = header_labels.get(h, h)
+                table_html += f'<th style="background:#1A1D27;color:#00D4AA;padding:10px 8px;border:1px solid #2A2D3E;text-align:left;white-space:nowrap;">{label}</th>'
+            table_html += '</tr></thead><tbody>'
+
+            # 数据行
+            for row in table:
+                table_html += '<tr>'
+                for h in headers:
+                    val = row.get(h, "")
+                    table_html += f'<td style="padding:8px;border:1px solid #2A2D3E;color:#E8E8E8;">{val}</td>'
+                table_html += '</tr>'
+            table_html += '</tbody></table>'
+
+            st.markdown(table_html, unsafe_allow_html=True)
+
+    # ===== 关键差异 =====
+    diffs = result.get("key_differences", [])
+    if diffs and isinstance(diffs, list):
+        st.markdown("### 🔑 关键差异点")
+        for d in diffs:
+            st.markdown(
+                f'<div style="margin:0.5rem 0;padding:0.75rem;background:rgba(0,163,255,0.05);'
+                f'border-radius:8px;border-left:3px solid #00A3FF;color:#E8E8E8;">{d}</div>',
+                unsafe_allow_html=True,
+            )
+
+    # ===== 跨市场套利 =====
+    arb = result.get("cross_market_arbitrage", "")
+    if arb:
+        st.markdown("### 🔄 跨市场套利机会")
+        st.markdown(
+            f'<div class="result-section" style="border-left-color:#FF9800;">'
+            f'<div class="result-value">{arb}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    # ===== 投资策略 =====
+    strategy = result.get("investment_strategy", "")
+    if strategy:
+        st.markdown("### 💡 投资策略建议")
+        st.markdown(
+            f'<div class="result-section" style="border-left-color:#00D4AA;">'
+            f'<div class="result-value">{strategy}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    # ===== 风险提示 =====
+    risks = result.get("risk_warnings", [])
+    if risks and isinstance(risks, list):
+        st.markdown("### ⚠️ 风险提示")
+        for risk in risks:
+            st.markdown(
+                f'<span class="tag tag-risk">⚠</span> '
+                f'<span style="color: #E8E8E8;">{risk}</span><br>',
+                unsafe_allow_html=True,
+            )
+
+    # ===== 免责声明 =====
+    disclaimer = result.get("disclaimer", "")
+    if disclaimer:
+        st.markdown("---")
+        st.markdown(
+            f'<div style="background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);'
+            f'border-radius:8px;padding:1rem;margin-top:1rem;">'
+            f'<div style="color:#FF9800;font-weight:600;margin-bottom:0.5rem;">⚠️ 免责声明</div>'
+            f'<div style="color:#E8E8E8;font-size:0.85rem;">{disclaimer}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_stock_comparison_page():
+    """多股票对比分析页面"""
+    st.markdown('<div class="app-header">📊 多股票对比分析</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="app-subtitle">输入多只股票代码或名称，AI 横向对比市场归属、交易规则、估值等</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not st.session_state.api_configured:
+        st.warning("⚠️ 请先在左侧边栏配置并连接 API")
+        return
+
+    # 输入区域
+    st.markdown("### 📌 股票列表")
+    stock_input = st.text_area(
+        "输入多只股票名称或代码，用逗号、空格或换行分隔",
+        height=120,
+        placeholder="例：贵州茅台, 腾讯控股, AAPL\n或：600519, 0700.HK, AAPL\n或：贵州茅台 腾讯控股 AAPL TSLA",
+        key="comparison_input",
+    )
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        analyze_btn = st.button(
+            "📊 开始对比分析",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if analyze_btn and stock_input.strip():
+        with st.spinner("🔄 AI 正在对比分析，请稍候..."):
+            try:
+                if not st.session_state.api_client:
+                    st.error("⚠️ 请先在侧边栏配置 API 密钥")
+                    return
+                prompt_template = PromptManager.get_prompt("stock_comparison")
+                result_text = st.session_state.api_client.analyze_stock_comparison(
+                    stock_input.strip(), prompt_template
+                )
+                result = parse_json_response(result_text)
+
+                if "error" in result:
+                    st.error(f"❌ 分析失败: {result['error']}")
+                    if "raw_content" in result:
+                        with st.expander("查看原始返回内容"):
+                            st.text(result["raw_content"])
+                else:
+                    st.session_state.analysis_history.append({
+                        "type": "stock_comparison",
+                        "input": stock_input.strip()[:100] + "...",
+                        "result": result,
+                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    })
+
+                    render_stock_comparison_result(result)
+
+            except Exception as e:
+                st.error(f"❌ 分析失败: {str(e)}")
+
+    elif analyze_btn:
+        st.warning("⚠️ 请输入至少两只股票名称或代码")
+
+
 def render_history_page():
     """历史记录页面"""
     st.markdown('<div class="app-header">📚 分析历史</div>', unsafe_allow_html=True)
@@ -1249,6 +1422,7 @@ def render_history_page():
             "announcement_analysis": "📋",
             "hotspot_analysis": "🔥",
             "stock_deep_decode": "🔍",
+            "stock_comparison": "📊",
         }
         icon = type_icons.get(record["type"], "📄")
 
@@ -1284,6 +1458,7 @@ def main():
         "announcement_analysis": render_announcement_analysis_page,
         "hotspot_analysis": render_hotspot_analysis_page,
         "stock_deep_decode": render_stock_decode_page,
+        "stock_comparison": render_stock_comparison_page,
     }
 
     handler = page_handlers.get(st.session_state.current_page)
