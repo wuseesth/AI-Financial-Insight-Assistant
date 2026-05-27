@@ -13,7 +13,6 @@ AI 金融信息分析助手 (AI Financial Insight Assistant)
 """
 
 import streamlit as st
-import json
 import time
 from datetime import datetime
 from typing import Dict, Any
@@ -21,7 +20,7 @@ from typing import Dict, Any
 # 项目内部模块
 from services.api_client import APIClient, get_available_backends, get_backend_models
 from prompts.financial_prompts import PromptManager
-from utils.helpers import parse_json_response, cache
+from utils.helpers import parse_json_response
 from utils.config import AppConfig
 
 # ============================================================
@@ -413,7 +412,12 @@ def render_analysis_result(result: Dict[str, Any], analysis_type: str):
     elif analysis_type == "hotspot_analysis":
         render_hotspot_result(result)
     elif analysis_type == "stock_deep_decode":
-        render_stock_decode_result(result)
+        try:
+            render_stock_decode_result(result)
+        except Exception as e:
+            st.error(f"❌ 渲染分析结果时出错: {str(e)}")
+            with st.expander("查看原始返回数据"):
+                st.json(result)
 
 
 def render_news_result(result: Dict[str, Any]):
@@ -743,11 +747,17 @@ def render_hotspot_result(result: Dict[str, Any]):
 # ============================================================
 def render_stock_decode_result(result: Dict[str, Any]):
     """渲染股票深度解码分析结果"""
+    # 结构完整性校验
+    required_parts = ["part1_market_identity", "part2_price_action", "part3_drivers_sentiment", "part4_outlook_strategy"]
+    missing_parts = [p for p in required_parts if p not in result]
+    if missing_parts:
+        st.warning(f"⚠️ 分析结果部分缺失: {', '.join(missing_parts)}，显示已有内容")
+
     st.markdown('<div class="result-card">', unsafe_allow_html=True)
 
     # ===== 第一部分：股票身份与跨境监管透视 =====
     part1 = result.get("part1_market_identity", {})
-    if part1:
+    if part1 and isinstance(part1, dict):
         st.markdown("## 🔍 第一部分：股票身份与跨境监管透视")
         st.markdown("---")
 
@@ -1202,7 +1212,7 @@ def render_stock_decode_page():
                         "type": "stock_deep_decode",
                         "input": stock_input,
                         "result": result,
-                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     })
 
                     render_stock_decode_result(result)
