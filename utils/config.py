@@ -72,6 +72,12 @@ class AppConfig:
             "description": "对多只股票进行横向对比分析（市场归属、交易规则、估值、策略）",
             "enabled": True,
         },
+        "kline_chart": {
+            "name": "📈 K线图行情",
+            "icon": "📈",
+            "description": "查看股票历史 K 线图及技术指标（MA5/10/20/60）",
+            "enabled": True,
+        },
     }
 
     @classmethod

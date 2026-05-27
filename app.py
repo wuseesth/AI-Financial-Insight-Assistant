@@ -19,6 +19,7 @@ from typing import Dict, Any
 
 # 项目内部模块
 from services.api_client import APIClient, get_available_backends, get_backend_models
+from services.market_data import MarketDataService
 from prompts.financial_prompts import PromptManager
 from utils.helpers import parse_json_response
 from utils.config import AppConfig
@@ -425,6 +426,24 @@ def render_analysis_result(result: Dict[str, Any], analysis_type: str):
             st.error(f"❌ 渲染分析结果时出错: {str(e)}")
             with st.expander("查看原始返回数据"):
                 st.json(result)
+    elif analysis_type == "kline_chart":
+        try:
+            fig = result.get("figure")
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            info = result.get("info", {})
+            if info and not info.get("error"):
+                cols = st.columns(4)
+                with cols[0]:
+                    st.metric("最新价", info.get("price", "—"))
+                with cols[1]:
+                    st.metric("涨跌幅", info.get("change", "—"))
+                with cols[2]:
+                    st.metric("成交量", info.get("volume", "—"))
+                with cols[3]:
+                    st.metric("成交额", info.get("amount", "—"))
+        except Exception as e:
+            st.error(f"❌ 渲染K线图时出错: {str(e)}")
 
 
 def render_news_result(result: Dict[str, Any]):
@@ -1397,6 +1416,180 @@ def render_stock_comparison_page():
         st.warning("⚠️ 请输入至少两只股票名称或代码")
 
 
+# ============================================================
+# K 线图行情页面
+# ============================================================
+def render_kline_page():
+    """K 线图行情页面"""
+    st.markdown('<div class="app-header">📈 K 线图行情</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="app-subtitle">实时查看 A 股 / 港股 / 美股 K 线走势，支持多周期切换</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 初始化 K 线图历史记录
+    if "kline_history" not in st.session_state:
+        st.session_state.kline_history = []
+
+    # 输入区域
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            stock_symbol = st.text_input(
+                "股票代码",
+                placeholder="例：600519（贵州茅台）、0700.HK（腾讯）、AAPL（苹果）",
+                key="kline_symbol",
+            )
+        with col2:
+            period_map = {
+                "1m": "近1个月",
+                "3m": "近3个月",
+                "6m": "近6个月",
+                "1y": "近1年",
+                "2y": "近2年",
+                "5y": "近5年",
+            }
+            selected_period = st.selectbox(
+                "时间范围",
+                options=list(period_map.keys()),
+                format_func=lambda x: period_map[x],
+                index=3,
+                key="kline_period",
+            )
+        with col3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            query_btn = st.button("🔍 查询", type="primary", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 查询逻辑
+    if query_btn and stock_symbol:
+        stock_symbol = stock_symbol.strip()
+        if not stock_symbol:
+            st.warning("⚠️ 请输入股票代码")
+        else:
+            with st.spinner(f"📡 正在获取 {stock_symbol} 行情数据..."):
+                try:
+                    service = MarketDataService()
+                    df = service.get_stock_history(
+                        symbol=stock_symbol,
+                        period=selected_period,
+                    )
+
+                    if df is None or df.empty:
+                        st.error(f"❌ 未获取到 {stock_symbol} 的行情数据，请检查股票代码是否正确")
+                    else:
+                        # 获取股票基本信息
+                        info = service.get_stock_info(stock_symbol)
+
+                        # 显示基本信息
+                        if info and not info.get("error"):
+                            market_tag = {"A股": "🇨🇳", "港股": "🇭🇰", "美股": "🇺🇸"}.get(
+                                info.get("market", ""), ""
+                            )
+                            st.markdown(
+                                f'<div class="card" style="text-align: center; padding: 1rem;">'
+                                f'<span style="font-size: 1.5rem; font-weight: 700; color: #00D4AA;">'
+                                f'{market_tag} {info.get("name", stock_symbol)} ({stock_symbol})</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            cols = st.columns(4)
+                            with cols[0]:
+                                st.metric("最新价", info.get("price", "—"))
+                            with cols[1]:
+                                change = info.get("change", "—")
+                                change_str = f"{change}%" if change != "—" else "—"
+                                st.metric("涨跌幅", change_str)
+                            with cols[2]:
+                                st.metric("成交量", info.get("volume", "—"))
+                            with cols[3]:
+                                st.metric("成交额", info.get("amount", "—"))
+
+                        # 绘制 K 线图
+                        fig = service.plot_candlestick(df, stock_symbol)
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # 数据统计
+                        st.markdown("### 📊 数据统计")
+                        latest = df.iloc[-1]
+                        period_high = df["high"].max()
+                        period_low = df["low"].min()
+                        period_avg = df["close"].mean()
+                        period_change = (
+                            (df["close"].iloc[-1] - df["close"].iloc[0])
+                            / df["close"].iloc[0]
+                            * 100
+                        )
+
+                        stat_cols = st.columns(5)
+                        with stat_cols[0]:
+                            st.metric("区间最高", f"{period_high:.2f}")
+                        with stat_cols[1]:
+                            st.metric("区间最低", f"{period_low:.2f}")
+                        with stat_cols[2]:
+                            st.metric("区间均价", f"{period_avg:.2f}")
+                        with stat_cols[3]:
+                            st.metric(
+                                "区间涨跌幅",
+                                f"{period_change:+.2f}%",
+                                delta=None,
+                            )
+                        with stat_cols[4]:
+                            st.metric(
+                                "最新收盘",
+                                f"{latest['close']:.2f}",
+                            )
+
+                        # 保存到历史记录
+                        result_data = {
+                            "figure": fig,
+                            "info": info if not info.get("error") else {},
+                            "symbol": stock_symbol,
+                            "period": selected_period,
+                            "stats": {
+                                "high": float(period_high),
+                                "low": float(period_low),
+                                "avg": float(period_avg),
+                                "change": float(period_change),
+                                "close": float(latest["close"]),
+                            },
+                        }
+                        st.session_state.analysis_history.append({
+                            "type": "kline_chart",
+                            "input": f"{stock_symbol} ({period_map[selected_period]})",
+                            "result": result_data,
+                            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        })
+
+                except Exception as e:
+                    st.error(f"❌ 获取行情数据失败: {str(e)}")
+                    st.info(
+                        "💡 提示：请确保网络连接正常，且股票代码格式正确。"
+                        "A 股直接输入代码（如 600519），港股加 .HK 后缀（如 0700.HK），"
+                        "美股输入英文代码（如 AAPL）"
+                    )
+
+    elif query_btn:
+        st.warning("⚠️ 请输入股票代码")
+
+    # 快捷入口
+    st.markdown("### 🔗 快捷查询")
+    quick_cols = st.columns(4)
+    quick_stocks = [
+        ("600519", "贵州茅台", "🇨🇳"),
+        ("000858", "五粮液", "🇨🇳"),
+        ("0700.HK", "腾讯控股", "🇭🇰"),
+        ("AAPL", "苹果", "🇺🇸"),
+    ]
+    for i, (code, name, flag) in enumerate(quick_stocks):
+        with quick_cols[i]:
+            if st.button(f"{flag} {name} ({code})", use_container_width=True):
+                st.session_state.kline_symbol = code
+                st.rerun()
+
+
 def render_history_page():
     """历史记录页面"""
     st.markdown('<div class="app-header">📚 分析历史</div>', unsafe_allow_html=True)
@@ -1423,6 +1616,7 @@ def render_history_page():
             "hotspot_analysis": "🔥",
             "stock_deep_decode": "🔍",
             "stock_comparison": "📊",
+            "kline_chart": "📈",
         }
         icon = type_icons.get(record["type"], "📄")
 
@@ -1459,6 +1653,7 @@ def main():
         "hotspot_analysis": render_hotspot_analysis_page,
         "stock_deep_decode": render_stock_decode_page,
         "stock_comparison": render_stock_comparison_page,
+        "kline_chart": render_kline_page,
     }
 
     handler = page_handlers.get(st.session_state.current_page)
