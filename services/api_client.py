@@ -213,6 +213,34 @@ class APIClient:
         ]
         return self.chat(messages, temperature=0.4, max_tokens=4096)
 
+    def analyze_stock_deep_decode(self, stock_input: str, prompt_template: str) -> str:
+        """
+        股票深度解码分析（CFA 量化策略师视角）
+
+        Args:
+            stock_input: 股票代码或名称
+            prompt_template: 分析提示词模板
+
+        Returns:
+            多维度深度解码报告
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是一位拥有 CFA（特许金融分析师）资格、并在顶级头部券商工作多年的"
+                    "资深量化策略师兼行业研究员。你精通 A股（主板/科创板/创业板/北交所）、"
+                    "港股、美股的编码规则、上市制度、监管特征、交易机制及行为金融学。"
+                    "请严格按照用户要求的四个步骤进行分步推理，输出结构严密的深度解码报告。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": prompt_template.format(user_stock_input=stock_input),
+            },
+        ]
+        return self.chat(messages, temperature=0.3, max_tokens=8192)
+
 
 def get_available_backends() -> List[str]:
     """获取可用的 API 后端列表"""

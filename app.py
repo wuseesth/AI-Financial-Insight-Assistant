@@ -7,6 +7,7 @@ AI 金融信息分析助手 (AI Financial Insight Assistant)
 1. 📰 财经新闻分析 - 自动总结、利好利空分析
 2. 📋 上市公司公告分析 - 核心事件提取、财务数据分析
 3. 🔥 市场热点分析 - 热点话题、热门行业/公司提取
+4. 🔍 股票深度解码 - CFA视角多维度深度解码（市场归属、异动规则、资金行为、策略建议）
 
 技术栈：Python + Streamlit + DeepSeek/OpenAI API
 """
@@ -411,6 +412,8 @@ def render_analysis_result(result: Dict[str, Any], analysis_type: str):
         render_announcement_result(result)
     elif analysis_type == "hotspot_analysis":
         render_hotspot_result(result)
+    elif analysis_type == "stock_deep_decode":
+        render_stock_decode_result(result)
 
 
 def render_news_result(result: Dict[str, Any]):
@@ -736,6 +739,265 @@ def render_hotspot_result(result: Dict[str, Any]):
 
 
 # ============================================================
+# 股票深度解码结果渲染
+# ============================================================
+def render_stock_decode_result(result: Dict[str, Any]):
+    """渲染股票深度解码分析结果"""
+    st.markdown('<div class="result-card">', unsafe_allow_html=True)
+
+    # ===== 第一部分：股票身份与跨境监管透视 =====
+    part1 = result.get("part1_market_identity", {})
+    if part1:
+        st.markdown("## 🔍 第一部分：股票身份与跨境监管透视")
+        st.markdown("---")
+
+        market = part1.get("market_judgment", {})
+        if market:
+            st.markdown("### 🔹 基本信息")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(
+                    f'<div class="result-section">'
+                    f'<div class="result-label">所属市场</div>'
+                    f'<div class="result-value"><b>{market.get("market", "未知")}</b></div>'
+                    f'<div style="color:#8892B0;font-size:0.85rem;margin-top:0.3rem;">{market.get("reason", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="result-section">'
+                    f'<div class="result-label">交易所</div>'
+                    f'<div class="result-value"><b>{market.get("exchange", "未知")}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.markdown(
+                    f'<div class="result-section">'
+                    f'<div class="result-label">监管机构</div>'
+                    f'<div class="result-value"><b>{market.get("regulator", "未知")}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="result-section">'
+                    f'<div class="result-label">上市公司</div>'
+                    f'<div class="result-value">{market.get("stock_name", "未知")}</div>'
+                    f'<div style="color:#8892B0;font-size:0.85rem;margin-top:0.3rem;">{market.get("business_sector", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        rules = part1.get("trading_rules", {})
+        if rules:
+            st.markdown("### 🔹 监管合规与交易机制")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">结算方式</div>'
+                    f'<div class="result-value" style="font-size:1.2rem;"><b>{rules.get("settlement", "未知")}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">涨跌幅限制</div>'
+                    f'<div class="result-value" style="font-size:1rem;">{rules.get("price_limit", "未知")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col3:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">融券做空</div>'
+                    f'<div class="result-value" style="font-size:1rem;">{rules.get("short_selling", "未知")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        thresholds = part1.get("abnormal_thresholds", {})
+        if thresholds:
+            st.markdown("### 🔹 异动公告触发临界点")
+            st.markdown(
+                f'<div class="result-section" style="border-left-color:#FF4D4D;">'
+                f'<div class="result-label">规则说明</div>'
+                f'<div class="result-value">{thresholds.get("rule_description", "")}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            for key in ["a_share_mainboard", "chi_next", "other_rules"]:
+                val = thresholds.get(key, "")
+                if val:
+                    st.markdown(
+                        f'<div style="margin:0.5rem 0;padding:0.5rem;background:rgba(255,77,77,0.05);'
+                        f'border-radius:8px;color:#E8E8E8;">⚠️ {val}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # ===== 第二部分：盘面异动与资金行为推演 =====
+    part2 = result.get("part2_price_action", {})
+    if part2:
+        st.markdown("## 📊 第二部分：盘面异动与资金行为推演")
+        st.markdown("---")
+
+        st.markdown(
+            f'<div class="result-section">'
+            f'<div class="result-label">异动状态评估</div>'
+            f'<div class="result-value">{part2.get("abnormal_assessment", "")}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="result-section" style="border-left-color:#00A3FF;">'
+            f'<div class="result-label">资金行为推演</div>'
+            f'<div class="result-value">{part2.get("capital_flow_analysis", "")}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="result-section" style="border-left-color:#FF9800;">'
+            f'<div class="result-label">盘中急涨急跌异动</div>'
+            f'<div class="result-value">{part2.get("intraday_anomaly", "")}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ===== 第三部分：核心驱动力与舆情情绪拆解 =====
+    part3 = result.get("part3_drivers_sentiment", {})
+    if part3:
+        st.markdown("## 💣 第三部分：核心驱动力与舆情情绪拆解")
+        st.markdown("---")
+
+        drivers = part3.get("driver_types", {})
+        if drivers:
+            st.markdown("### 🔹 驱动力分类")
+            for d_key, d_val in drivers.items():
+                icons = {"fundamental": "📊", "policy": "🏛️", "sentiment": "🔥"}
+                labels = {"fundamental": "基本面驱动", "policy": "政策周期驱动", "sentiment": "情绪题材驱动"}
+                st.markdown(
+                    f'<div class="result-section">'
+                    f'<div class="result-label">{icons.get(d_key, "📌")} {labels.get(d_key, d_key)}</div>'
+                    f'<div class="result-value">{d_val}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        sentiment = part3.get("market_sentiment", {})
+        if sentiment:
+            st.markdown("### 🔹 市场情绪量化模拟")
+            st.markdown(
+                f'<div class="result-section" style="border-left-color:#FFC107;">'
+                f'<div class="result-label">整体情绪</div>'
+                f'<div class="result-value"><b>{sentiment.get("overall", "")}</b></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            risk = sentiment.get("risk_warning", "")
+            if risk:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#FF4D4D;">'
+                    f'<div class="result-label" style="color:#FF4D4D;">⚠️ 风险警告</div>'
+                    f'<div class="result-value">{risk}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ===== 第四部分：空间博弈与多空展望 =====
+    part4 = result.get("part4_outlook_strategy", {})
+    if part4:
+        st.markdown("## 🚀 第四部分：空间博弈与多空展望")
+        st.markdown("---")
+
+        tech = part4.get("technical_levels", {})
+        if tech:
+            st.markdown("### 🔹 技术面心理位")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#00D4AA;">'
+                    f'<div class="result-label">🛡️ 心理支撑位</div>'
+                    f'<div class="result-value"><b>{tech.get("support", "待分析")}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#FF4D4D;">'
+                    f'<div class="result-label">🚧 上行阻力位</div>'
+                    f'<div class="result-value"><b>{tech.get("resistance", "待分析")}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        rr = part4.get("risk_reward_ratio", {})
+        if rr:
+            st.markdown("### 🔹 涨跌幅空间评估（风险收益比）")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">📈 上行空间</div>'
+                    f'<div class="result-value" style="font-size:1rem;">{rr.get("upside_space", "待评估")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">📉 下行风险</div>'
+                    f'<div class="result-value" style="font-size:1rem;color:#FF4D4D;">{rr.get("downside_space", "待评估")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col3:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">⚖️ 风险收益比</div>'
+                    f'<div class="result-value" style="font-size:1rem;color:#FFC107;"><b>{rr.get("ratio", "待评估")}</b></div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        strategy = part4.get("strategy_advice", {})
+        if strategy:
+            st.markdown("### 🔹 操盘策略建议")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#00D4AA;">'
+                    f'<div class="result-label">⚡ 短线趋势交易者</div>'
+                    f'<div class="result-value">{strategy.get("short_term", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.markdown(
+                    f'<div class="result-section" style="border-left-color:#00A3FF;">'
+                    f'<div class="result-label">💎 中线价值投资者</div>'
+                    f'<div class="result-value">{strategy.get("mid_term", "")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ===== 免责声明 =====
+    disclaimer = result.get("disclaimer", "")
+    if disclaimer:
+        st.markdown("---")
+        st.markdown(
+            f'<div style="background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);'
+            f'border-radius:8px;padding:1rem;margin-top:1rem;">'
+            f'<div style="color:#FF9800;font-weight:600;margin-bottom:0.5rem;">⚠️ 免责声明</div>'
+            f'<div style="color:#E8E8E8;font-size:0.85rem;">{disclaimer}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ============================================================
 # 功能页面
 # ============================================================
 def render_news_analysis_page():
@@ -892,6 +1154,63 @@ def render_hotspot_analysis_page():
         st.warning("⚠️ 请输入新闻内容")
 
 
+def render_stock_decode_page():
+    """股票深度解码页面"""
+    st.markdown('<div class="app-header">🔍 股票深度解码</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="app-subtitle">CFA 级专业分析 — 输入股票代码或名称，获取多维度深度解码</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 输入区域
+    st.markdown("### 📌 股票查询")
+    stock_input = st.text_input(
+        "输入股票名称或代码（如：贵州茅台、600519、AAPL、TSLA）",
+        placeholder="例：贵州茅台 / 600519 / AAPL / 0700.HK",
+        key="stock_decode_input",
+    )
+
+    # 分析按钮
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        analyze_btn = st.button(
+            "🔍 开始深度解码",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if analyze_btn and stock_input:
+        with st.spinner("🔄 AI 正在深度分析，请稍候..."):
+            try:
+                api_client = get_api_client()
+                prompt_template = PromptManager.get_prompt("stock_deep_decode")
+                result = api_client.analyze_stock_deep_decode(
+                    stock_input, prompt_template
+                )
+
+                if "error" in result:
+                    st.error(f"❌ 分析失败: {result['error']}")
+                    if "raw_content" in result:
+                        with st.expander("查看原始返回内容"):
+                            st.text(result["raw_content"])
+                else:
+                    # 保存历史
+                    st.session_state.analysis_history.append({
+                        "type": "stock_deep_decode",
+                        "input": stock_input,
+                        "result": result,
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                    })
+
+                    render_stock_decode_result(result)
+
+            except Exception as e:
+                st.error(f"❌ 分析失败: {str(e)}")
+
+    elif analyze_btn:
+        st.warning("⚠️ 请输入股票名称或代码")
+
+
 def render_history_page():
     """历史记录页面"""
     st.markdown('<div class="app-header">📚 分析历史</div>', unsafe_allow_html=True)
@@ -916,6 +1235,7 @@ def render_history_page():
             "news_analysis": "📰",
             "announcement_analysis": "📋",
             "hotspot_analysis": "🔥",
+            "stock_deep_decode": "🔍",
         }
         icon = type_icons.get(record["type"], "📄")
 
@@ -950,6 +1270,7 @@ def main():
         "news_analysis": render_news_analysis_page,
         "announcement_analysis": render_announcement_analysis_page,
         "hotspot_analysis": render_hotspot_analysis_page,
+        "stock_deep_decode": render_stock_decode_page,
     }
 
     handler = page_handlers.get(st.session_state.current_page)

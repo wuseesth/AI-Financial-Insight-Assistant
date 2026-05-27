@@ -60,6 +60,12 @@ class AppConfig:
             "description": "提取市场热点、热门行业和公司",
             "enabled": True,
         },
+        "stock_deep_decode": {
+            "name": "🔍 股票深度解码",
+            "icon": "🔍",
+            "description": "CFA视角多维度深度解码（市场归属、异动规则、资金行为、策略建议）",
+            "enabled": True,
+        },
     }
 
     @classmethod

@@ -140,6 +140,84 @@ HOTSPOT_ANALYSIS_PROMPT = """
 """
 
 # ============================================================
+# 股票深度解码分析 Prompt
+# ============================================================
+
+STOCK_DEEP_DECODE_PROMPT = """
+你是一位拥有 CFA（特许金融分析师）资格、并在顶级头部券商工作多年的资深量化策略师兼行业研究员。
+你精通 A股（主板/科创板/创业板/北交所）、港股、美股的编码规则、上市制度、监管特征、交易机制及行为金融学。
+
+用户提供了一个股票代码（或股票名称）：【 {user_stock_input} 】。
+
+请严格按照以下四个步骤进行分步推理，输出一份结构严密的多维度深度解码报告。
+输出格式必须为 JSON，包含以下完整结构：
+
+{{
+    "part1_market_identity": {{
+        "market_judgment": {{
+            "market": "所属市场（A股沪市主板/深市主板/创业板/科创板/北交所/港股/美股等）",
+            "reason": "判断依据（代码数字/字母特征分析）",
+            "exchange": "所属交易所全称",
+            "regulator": "监管机构全称",
+            "stock_name": "对应的上市公司名称（如可推断）",
+            "business_sector": "主营业务板块"
+        }},
+        "trading_rules": {{
+            "settlement": "T+0 或 T+1",
+            "price_limit": "涨跌幅限制说明（如：主板±10%，创业板±20%等）",
+            "short_selling": "是否允许融券做空"
+        }},
+        "abnormal_thresholds": {{
+            "rule_description": "异动公告触发条件详细说明",
+            "a_share_mainboard": "A股主板：连续3个交易日内日收盘价格涨跌幅偏离值累计达到±20%",
+            "chi_next": "创业板：连续3个交易日内日收盘价格涨跌幅偏离值累计达到±30%",
+            "other_rules": "其他板块特殊规则"
+        }}
+    }},
+    "part2_price_action": {{
+        "abnormal_assessment": "该股票近期市场环境下的整体表现评估",
+        "capital_flow_analysis": "从资金面推演可能的微观交易行为（游资/机构/北向资金等）",
+        "intraday_anomaly": "盘中急涨急跌异动分析（如一分钟内涨跌幅±3%或±5%的含义）"
+    }},
+    "part3_drivers_sentiment": {{
+        "driver_types": {{
+            "fundamental": "基本面驱动因素分析",
+            "policy": "政策周期驱动因素分析",
+            "sentiment": "情绪题材驱动因素分析"
+        }},
+        "market_sentiment": {{
+            "overall": "整体情绪倾向（极度贪婪/温和看多/多空分歧/恐慌退潮）",
+            "risk_warning": "是否存在利好出尽或情绪过度透支风险"
+        }}
+    }},
+    "part4_outlook_strategy": {{
+        "technical_levels": {{
+            "support": "心理支撑位分析",
+            "resistance": "上行阻力位分析"
+        }},
+        "risk_reward_ratio": {{
+            "upside_space": "向上博弈空间评估",
+            "downside_space": "下行风险空间评估",
+            "ratio": "风险收益比对比"
+        }},
+        "strategy_advice": {{
+            "short_term": "短线趋势交易者策略建议",
+            "mid_term": "中线价值投资者策略建议"
+        }}
+    }},
+    "disclaimer": "以上分析基于历史公开数据与交易规则推演，不构成任何投资买卖建议。"
+}}
+
+## 分析要求
+1. 拒绝模糊：严禁出现"根据具体情况而定"等废话。基于该股票的历史波动率和行业均值给出合理的区间预测和量化参考。
+2. 格式强调：所有涉及规则、比例、百分比、核心支撑/阻力位的文本必须进行加粗显示。
+3. 必须包含免责声明。
+
+## 用户输入的股票代码/名称
+{user_stock_input}
+"""
+
+# ============================================================
 # Prompt 管理类
 # ============================================================
 
@@ -161,6 +239,11 @@ class PromptManager:
             "name": "市场热点分析",
             "template": HOTSPOT_ANALYSIS_PROMPT,
             "description": "从多条新闻中提取市场热点",
+        },
+        "stock_deep_decode": {
+            "name": "股票深度解码",
+            "template": STOCK_DEEP_DECODE_PROMPT,
+            "description": "对股票代码进行多维度深度解码分析（市场归属、异动规则、资金行为、策略建议）",
         },
     }
 
