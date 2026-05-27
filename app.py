@@ -1487,6 +1487,10 @@ def render_kline_page():
     if "kline_history" not in st.session_state:
         st.session_state.kline_history = []
 
+    # 处理快捷选择（在 widget 创建前读取）
+    quick_select = st.session_state.pop("kline_quick_select", None)
+    default_value = quick_select if quick_select else ""
+
     # 输入区域
     with st.container():
         st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1494,6 +1498,7 @@ def render_kline_page():
         with col1:
             stock_symbol = st.text_input(
                 "股票代码",
+                value=default_value,
                 placeholder="例：600519（贵州茅台）、0700.HK（腾讯）、AAPL（苹果）",
                 key="kline_symbol",
             )
@@ -1642,7 +1647,7 @@ def render_kline_page():
     for i, (code, name, flag) in enumerate(quick_stocks):
         with quick_cols[i]:
             if st.button(f"{flag} {name} ({code})", use_container_width=True):
-                st.session_state.kline_symbol = code
+                st.session_state.kline_quick_select = code
                 st.rerun()
 
 
