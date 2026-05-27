@@ -20,6 +20,7 @@ from typing import Dict, Any
 # 项目内部模块
 from services.api_client import APIClient, get_available_backends, get_backend_models
 from services.market_data import MarketDataService
+from services.report_export import ReportExporter
 from prompts.financial_prompts import PromptManager
 from utils.helpers import parse_json_response
 from utils.config import AppConfig
@@ -445,6 +446,49 @@ def render_analysis_result(result: Dict[str, Any], analysis_type: str):
         except Exception as e:
             st.error(f"❌ 渲染K线图时出错: {str(e)}")
 
+    # K线图导出按钮
+    if analysis_type == "kline_chart" and "error" not in result:
+        _render_export_buttons(result, "kline_chart")
+
+
+# ============================================================
+# 报告导出辅助函数
+# ============================================================
+def _render_export_buttons(result: Dict[str, Any], analysis_type: str):
+    """渲染 PDF/Word 导出按钮"""
+    if "error" in result:
+        return
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("📄 导出为 Word", key=f"export_word_{analysis_type}_{id(result)}", use_container_width=True):
+            with st.spinner("正在生成 Word 文档..."):
+                try:
+                    word_bytes = ReportExporter.export_to_word(result, analysis_type)
+                    st.download_button(
+                        label="📥 下载 Word 文档",
+                        data=word_bytes,
+                        file_name=f"{analysis_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"download_word_{analysis_type}_{id(result)}",
+                    )
+                except Exception as e:
+                    st.error(f"❌ Word 导出失败: {str(e)}")
+    with col2:
+        if st.button("📕 导出为 PDF", key=f"export_pdf_{analysis_type}_{id(result)}", use_container_width=True):
+            with st.spinner("正在生成 PDF 文档..."):
+                try:
+                    pdf_bytes = ReportExporter.export_to_pdf(result, analysis_type)
+                    st.download_button(
+                        label="📥 下载 PDF 文档",
+                        data=pdf_bytes,
+                        file_name=f"{analysis_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf",
+                        key=f"download_pdf_{analysis_type}_{id(result)}",
+                    )
+                except Exception as e:
+                    st.error(f"❌ PDF 导出失败: {str(e)}")
+
 
 def render_news_result(result: Dict[str, Any]):
     """渲染财经新闻分析结果"""
@@ -549,6 +593,9 @@ def render_news_result(result: Dict[str, Any]):
             )
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # 导出按钮
+    _render_export_buttons(result, "news_analysis")
 
 
 def render_announcement_result(result: Dict[str, Any]):
@@ -657,6 +704,9 @@ def render_announcement_result(result: Dict[str, Any]):
             )
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # 导出按钮
+    _render_export_buttons(result, "announcement_analysis")
 
 
 def render_hotspot_result(result: Dict[str, Any]):
@@ -1032,6 +1082,9 @@ def render_stock_decode_result(result: Dict[str, Any]):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # 导出按钮
+    _render_export_buttons(result, "stock_deep_decode")
+
 
 # ============================================================
 # 功能页面
@@ -1351,6 +1404,9 @@ def render_stock_comparison_result(result: Dict[str, Any]):
         )
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # 导出按钮
+    _render_export_buttons(result, "stock_comparison")
 
 
 def render_stock_comparison_page():
