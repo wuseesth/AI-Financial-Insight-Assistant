@@ -1,0 +1,40 @@
+# ============================================================
+# Docker Compose — AI Financial Insight Assistant
+# ============================================================
+# 一键启动：docker-compose up -d
+# 停止：     docker-compose down
+# 查看日志： docker-compose logs -f
+# ============================================================
+
+version: "3.9"
+
+services:
+  financial-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-financial-assistant
+    ports:
+      - "8501:8501"
+    environment:
+      # ── API 配置（通过 .env 文件或系统环境变量注入） ──
+      # 方式一：创建 .env 文件与 docker-compose.yml 同级
+      # 方式二：直接在系统环境变量中设置
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      # 挂载 .env 文件（如果存在）
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - fin-network
+
+networks:
+  fin-network:
+    driver: bridge
