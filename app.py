@@ -37,18 +37,32 @@ st.set_page_config(**AppConfig.PAGE_CONFIG)
 # 自定义 CSS - 金融科技深色主题
 # ============================================================
 def load_css():
-    """加载自定义 CSS 样式 — 企业级金融终端主题"""
+    """加载自定义 CSS 样式 — 企业级金融终端主题（无外部依赖，中国网络友好）"""
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        /* ===== 字体系统（纯本地，无 Google Fonts 依赖） ===== */
+        * {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                         'Microsoft YaHei', 'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
+        }
+        code, pre, .mono, .metric-value, .pro-table, .pro-rating-scale {
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace !important;
+        }
 
-        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-        code, pre, .mono { font-family: 'JetBrains Mono', monospace !important; }
+        /* ===== 基础布局 ===== */
+        .stApp {
+            background: #131722;
+        }
+        .stApp > header {
+            display: none !important;
+        }
+        .block-container {
+            padding-top: 0.5rem !important;
+            padding-bottom: 0.5rem !important;
+            max-width: 1200px !important;
+        }
 
-        .stApp { background: #0B0E14; }
-        .stApp > header { display: none !important; }
-        .block-container { padding-top: 0.75rem !important; padding-bottom: 0.5rem !important; max-width: 1200px !important; }
-
+        /* ===== 滚动条 ===== */
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2A2D3E; border-radius: 2px; }
@@ -56,25 +70,25 @@ def load_css():
         /* ===== 顶部导航栏 ===== */
         .topbar {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 0.4rem 0; margin-bottom: 0.75rem;
+            padding: 0.35rem 0; margin-bottom: 0.6rem;
             border-bottom: 1px solid rgba(42,45,62,0.4);
         }
-        .topbar-brand { display: flex; align-items: center; gap: 0.6rem; }
+        .topbar-brand { display: flex; align-items: center; gap: 0.5rem; }
         .topbar-logo {
-            width: 28px; height: 28px;
+            width: 26px; height: 26px;
             background: linear-gradient(135deg, #00D4AA, #00A3FF);
-            border-radius: 6px;
+            border-radius: 5px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 0.85rem; font-weight: 800; color: #0B0E14;
+            font-size: 0.8rem; font-weight: 800; color: #131722;
         }
-        .topbar-title { font-size: 0.95rem; font-weight: 700; color: #E8E8E8; letter-spacing: 0.3px; }
+        .topbar-title { font-size: 0.9rem; font-weight: 700; color: #D1D4DC; letter-spacing: 0.3px; }
         .topbar-title span { color: #00D4AA; }
         .topbar-version {
-            font-size: 0.6rem; color: #4A4D5E;
-            background: rgba(42,45,62,0.4); padding: 0.1rem 0.4rem;
-            border-radius: 3px; margin-left: 0.4rem;
+            font-size: 0.55rem; color: #5D6070;
+            background: rgba(42,45,62,0.4); padding: 0.08rem 0.35rem;
+            border-radius: 3px; margin-left: 0.35rem;
         }
-        .topbar-status { display: flex; align-items: center; gap: 0.75rem; font-size: 0.7rem; color: #4A4D5E; }
+        .topbar-status { display: flex; align-items: center; gap: 0.6rem; font-size: 0.65rem; color: #5D6070; }
         .status-dot {
             width: 5px; height: 5px; border-radius: 50%; display: inline-block; margin-right: 3px;
         }
@@ -82,38 +96,48 @@ def load_css():
         .status-dot.offline { background: #FF4D4D; }
 
         /* ===== 页面标题 ===== */
-        .page-header { font-size: 1.3rem; font-weight: 700; color: #E8E8E8; margin-bottom: 0.15rem; letter-spacing: -0.3px; }
-        .page-subtitle { font-size: 0.75rem; color: #4A4D5E; margin-bottom: 1rem; }
+        .page-header {
+            font-size: 1.25rem; font-weight: 700; color: #D1D4DC;
+            margin-bottom: 0.1rem; letter-spacing: -0.3px;
+        }
+        .page-subtitle {
+            font-size: 0.72rem; color: #5D6070; margin-bottom: 0.8rem;
+        }
 
         /* ===== 卡片系统 ===== */
         .card {
-            background: #12151E; border: 1px solid #1E2130;
-            border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem;
+            background: #1A1D28; border: 1px solid #252836;
+            border-radius: 6px; padding: 0.7rem; margin-bottom: 0.45rem;
         }
         .card-header {
             display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 0.5rem; padding-bottom: 0.4rem;
+            margin-bottom: 0.4rem; padding-bottom: 0.35rem;
             border-bottom: 1px solid rgba(42,45,62,0.25);
         }
-        .card-title { font-size: 0.65rem; font-weight: 600; color: #4A4D5E; text-transform: uppercase; letter-spacing: 0.8px; }
-        .card-body { font-size: 0.8rem; color: #C0C4D0; line-height: 1.5; }
+        .card-title {
+            font-size: 0.62rem; font-weight: 600; color: #5D6070;
+            text-transform: uppercase; letter-spacing: 0.8px;
+        }
+        .card-body {
+            font-size: 0.78rem; color: #B0B4C0; line-height: 1.5;
+        }
 
         /* ===== 数据行 ===== */
         .data-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 0.25rem 0; border-bottom: 1px solid rgba(42,45,62,0.12);
+            padding: 0.22rem 0; border-bottom: 1px solid rgba(42,45,62,0.12);
         }
         .data-row:last-child { border-bottom: none; }
-        .data-label { font-size: 0.7rem; color: #4A4D5E; }
-        .data-value { font-size: 0.75rem; color: #C0C4D0; font-weight: 500; }
+        .data-label { font-size: 0.68rem; color: #5D6070; }
+        .data-value { font-size: 0.72rem; color: #B0B4C0; font-weight: 500; }
         .data-value.up { color: #00D4AA; }
         .data-value.down { color: #FF4D4D; }
         .data-value.neutral { color: #FFC107; }
 
         /* ===== 标签 ===== */
         .tag {
-            display: inline-block; padding: 0.1rem 0.4rem;
-            border-radius: 2px; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.2px;
+            display: inline-block; padding: 0.08rem 0.35rem;
+            border-radius: 2px; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.2px;
         }
         .tag-bullish { background: rgba(0,212,170,0.1); color: #00D4AA; }
         .tag-bearish { background: rgba(255,77,77,0.1); color: #FF4D4D; }
@@ -125,39 +149,41 @@ def load_css():
         /* ===== 指标网格 ===== */
         .metric-grid {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 0.4rem; margin-bottom: 0.5rem;
+            gap: 0.35rem; margin-bottom: 0.45rem;
         }
         .metric-item {
             background: rgba(0,0,0,0.2); border: 1px solid rgba(42,45,62,0.25);
-            border-radius: 4px; padding: 0.5rem; text-align: center;
+            border-radius: 4px; padding: 0.45rem; text-align: center;
         }
         .metric-value {
-            font-size: 1rem; font-weight: 700; color: #E8E8E8;
-            font-family: 'JetBrains Mono', monospace !important;
+            font-size: 0.95rem; font-weight: 700; color: #D1D4DC;
         }
         .metric-value.up { color: #00D4AA; }
         .metric-value.down { color: #FF4D4D; }
         .metric-label {
-            font-size: 0.55rem; color: #4A4D5E;
-            text-transform: uppercase; letter-spacing: 0.4px; margin-top: 0.15rem;
+            font-size: 0.52rem; color: #5D6070;
+            text-transform: uppercase; letter-spacing: 0.4px; margin-top: 0.12rem;
         }
 
         /* ===== Streamlit 组件覆盖 ===== */
         .stButton > button {
-            background: #00D4AA !important; color: #0B0E14 !important;
+            background: #00D4AA !important; color: #131722 !important;
             border: none !important; border-radius: 4px !important;
-            padding: 0.3rem 1rem !important; font-size: 0.75rem !important;
+            padding: 0.25rem 0.9rem !important; font-size: 0.72rem !important;
             font-weight: 600 !important; height: auto !important;
             transition: all 0.12s !important;
         }
-        .stButton > button:hover { background: #00E6B5 !important; box-shadow: 0 2px 8px rgba(0,212,170,0.25) !important; }
+        .stButton > button:hover {
+            background: #00E6B5 !important;
+            box-shadow: 0 2px 8px rgba(0,212,170,0.25) !important;
+        }
         .stButton > button:active { transform: scale(0.97); }
 
         .stTextInput > div > div > input,
         .stTextArea textarea {
-            background: #12151E !important; border: 1px solid #1E2130 !important;
-            border-radius: 4px !important; color: #C0C4D0 !important;
-            font-size: 0.8rem !important; padding: 0.4rem 0.6rem !important;
+            background: #1A1D28 !important; border: 1px solid #252836 !important;
+            border-radius: 4px !important; color: #B0B4C0 !important;
+            font-size: 0.78rem !important; padding: 0.35rem 0.55rem !important;
         }
         .stTextInput > div > div > input:focus,
         .stTextArea textarea:focus {
@@ -166,18 +192,31 @@ def load_css():
         }
 
         .stSelectbox > div > div {
-            background: #12151E !important; border: 1px solid #1E2130 !important;
-            border-radius: 4px !important; color: #C0C4D0 !important;
-            font-size: 0.75rem !important; min-height: 30px !important;
+            background: #1A1D28 !important; border: 1px solid #252836 !important;
+            border-radius: 4px !important; color: #B0B4C0 !important;
+            font-size: 0.72rem !important; min-height: 28px !important;
+        }
+        /* 下拉菜单选项 */
+        div[data-baseweb="select"] > div {
+            background: #1A1D28 !important;
+        }
+        div[data-baseweb="select"] ul {
+            background: #1A1D28 !important;
+        }
+        div[data-baseweb="select"] li {
+            color: #B0B4C0 !important;
+        }
+        div[data-baseweb="select"] li:hover {
+            background: rgba(0,212,170,0.08) !important;
         }
 
         .stTabs [data-baseweb="tab-list"] {
             gap: 0; background: transparent;
-            border-bottom: 1px solid #1E2130; padding: 0; border-radius: 0;
+            border-bottom: 1px solid #252836; padding: 0; border-radius: 0;
         }
         .stTabs [data-baseweb="tab"] {
-            border-radius: 0 !important; padding: 0.4rem 0.8rem !important;
-            color: #4A4D5E !important; font-size: 0.75rem !important;
+            border-radius: 0 !important; padding: 0.35rem 0.75rem !important;
+            color: #5D6070 !important; font-size: 0.72rem !important;
             border-bottom: 2px solid transparent !important;
             transition: all 0.12s !important;
         }
@@ -189,82 +228,94 @@ def load_css():
         .stTabs [data-baseweb="tab"]:hover { color: #8892B0 !important; }
 
         .stProgress > div > div { background: #00D4AA !important; }
-        hr { border-color: #1E2130 !important; margin: 0.75rem 0 !important; }
+        hr { border-color: #252836 !important; margin: 0.6rem 0 !important; }
 
-        /* ===== 专业表格 ===== */
-        .pro-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
-        .pro-table th {
-            background: rgba(0,212,170,0.06); color: #00D4AA;
-            padding: 0.35rem 0.5rem; text-align: left; font-weight: 600;
-            border-bottom: 1px solid rgba(0,212,170,0.15);
+        /* ===== Streamlit 侧边栏覆盖 ===== */
+        section[data-testid="stSidebar"] {
+            background: #131722 !important;
+            border-right: 1px solid #252836 !important;
         }
-        .pro-table td {
-            padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(42,45,62,0.3);
-            color: #C0C4D0;
+        section[data-testid="stSidebar"] .stButton > button {
+            width: 100% !important;
+            background: transparent !important;
+            color: #B0B4C0 !important;
+            border: 1px solid #252836 !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
+            padding: 0.35rem 0.6rem !important;
+            font-size: 0.72rem !important;
+            font-weight: 500 !important;
         }
-        .pro-table tr:hover td { background: rgba(0,212,170,0.02); }
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            background: rgba(0,212,170,0.06) !important;
+            border-color: rgba(0,212,170,0.2) !important;
+            color: #00D4AA !important;
+        }
+        section[data-testid="stSidebar"] .stButton > button:focus {
+            box-shadow: none !important;
+        }
 
-        /* ===== 侧边栏样式 ===== */
+        /* ===== 侧边栏品牌样式 ===== */
         .sidebar-brand {
-            text-align: center; padding: 0.5rem 0;
+            text-align: center; padding: 0.4rem 0;
         }
         .sidebar-logo {
-            width: 32px; height: 32px; margin: 0 auto 0.4rem;
+            width: 30px; height: 30px; margin: 0 auto 0.35rem;
             background: linear-gradient(135deg, #00D4AA, #00A3FF);
             border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 0.9rem; font-weight: 800; color: #0B0E14;
+            font-size: 0.85rem; font-weight: 800; color: #131722;
         }
         .sidebar-title {
-            font-size: 0.9rem; font-weight: 700; color: #E8E8E8; letter-spacing: 0.3px;
+            font-size: 0.85rem; font-weight: 700; color: #D1D4DC; letter-spacing: 0.3px;
         }
         .sidebar-version {
-            font-size: 0.6rem; color: #4A4D5E; margin-top: 0.15rem;
+            font-size: 0.55rem; color: #5D6070; margin-top: 0.12rem;
         }
         .sidebar-divider {
-            height: 1px; background: rgba(42,45,62,0.3); margin: 0.5rem 0;
+            height: 1px; background: rgba(42,45,62,0.3); margin: 0.4rem 0;
         }
         .sidebar-section-title {
-            color: #4A4D5E; font-weight: 600; font-size: 0.7rem;
-            margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.5px;
+            color: #5D6070; font-weight: 600; font-size: 0.65rem;
+            margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.5px;
         }
         .sidebar-status {
             background: rgba(0,212,170,0.06); border: 1px solid rgba(0,212,170,0.12);
-            border-radius: 4px; padding: 0.35rem 0.6rem; margin: 0.5rem 0;
+            border-radius: 4px; padding: 0.3rem 0.55rem; margin: 0.4rem 0;
         }
         .sidebar-status-dot {
             display: inline-block; width: 5px; height: 5px; border-radius: 50%;
             background: #00D4AA; box-shadow: 0 0 4px rgba(0,212,170,0.5); margin-right: 4px;
         }
         .sidebar-status-text {
-            color: #00D4AA; font-size: 0.75rem; font-weight: 600;
+            color: #00D4AA; font-size: 0.72rem; font-weight: 600;
         }
         .sidebar-status-sub {
-            color: #4A4D5E; font-size: 0.65rem;
+            color: #5D6070; font-size: 0.62rem;
         }
         .sidebar-stats {
-            color: #4A4D5E; font-size: 0.75rem; text-align: center;
+            color: #5D6070; font-size: 0.72rem; text-align: center;
         }
         .sidebar-stats-count {
             color: #00D4AA; font-weight: 700;
         }
         .sidebar-footer {
-            text-align: center; color: #2A2D3E; font-size: 0.6rem; padding: 0.5rem 0;
+            text-align: center; color: #2A2D3E; font-size: 0.58rem; padding: 0.4rem 0;
         }
 
         /* ===== 机构级股票深度解码样式 ===== */
         .pro-scorecard {
-            background: linear-gradient(145deg, #12151E, #1A1D27);
-            border: 1px solid #1E2130;
+            background: linear-gradient(145deg, #1A1D28, #1E212E);
+            border: 1px solid #252836;
             border-radius: 6px;
-            padding: 0.75rem;
-            margin: 0.5rem 0;
+            padding: 0.7rem;
+            margin: 0.45rem 0;
         }
         .pro-rating-badge {
             display: inline-block;
-            padding: 0.25rem 0.75rem;
+            padding: 0.22rem 0.7rem;
             border-radius: 4px;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             font-weight: 700;
             letter-spacing: 0.5px;
         }
@@ -282,19 +333,19 @@ def load_css():
             transition: width 0.5s ease;
         }
         .pro-dimension-label {
-            font-size: 0.65rem; color: #4A4D5E;
+            font-size: 0.62rem; color: #5D6070;
             text-transform: uppercase; letter-spacing: 0.5px;
         }
         .pro-dimension-score {
-            font-size: 0.8rem; font-weight: 700;
+            font-size: 0.78rem; font-weight: 700;
         }
 
         /* ===== 章节标题 ===== */
         .pro-section-header {
-            font-size: 0.75rem; font-weight: 700;
-            padding: 0.35rem 0.6rem;
+            font-size: 0.72rem; font-weight: 700;
+            padding: 0.3rem 0.55rem;
             border-radius: 4px;
-            margin: 0.5rem 0 0.4rem 0;
+            margin: 0.45rem 0 0.35rem 0;
             cursor: pointer; user-select: none;
             text-transform: uppercase; letter-spacing: 0.5px;
         }
@@ -306,27 +357,27 @@ def load_css():
         /* ===== 数据行 ===== */
         .pro-data-row {
             display: flex; justify-content: space-between;
-            padding: 0.25rem 0;
+            padding: 0.22rem 0;
             border-bottom: 1px solid rgba(42, 45, 62, 0.3);
         }
-        .pro-data-label { color: #4A4D5E; font-size: 0.7rem; }
-        .pro-data-value { color: #C0C4D0; font-size: 0.75rem; font-weight: 600; }
+        .pro-data-label { color: #5D6070; font-size: 0.68rem; }
+        .pro-data-value { color: #B0B4C0; font-size: 0.72rem; font-weight: 600; }
         .pro-data-value-up { color: #00D4AA; }
         .pro-data-value-down { color: #FF4D4D; }
 
         /* ===== 信号指示 ===== */
-        .pro-signal-bullish { color: #00D4AA; font-weight: 600; font-size: 0.75rem; }
-        .pro-signal-bearish { color: #FF4D4D; font-weight: 600; font-size: 0.75rem; }
-        .pro-signal-neutral { color: #FFC107; font-weight: 600; font-size: 0.75rem; }
+        .pro-signal-bullish { color: #00D4AA; font-weight: 600; font-size: 0.72rem; }
+        .pro-signal-bearish { color: #FF4D4D; font-weight: 600; font-size: 0.72rem; }
+        .pro-signal-neutral { color: #FFC107; font-weight: 600; font-size: 0.72rem; }
 
         /* ===== 风险标签 ===== */
         .pro-risk-tag {
             display: inline-block;
-            padding: 0.1rem 0.4rem;
+            padding: 0.08rem 0.35rem;
             border-radius: 3px;
-            font-size: 0.65rem;
+            font-size: 0.62rem;
             font-weight: 600;
-            margin: 0.1rem;
+            margin: 0.08rem;
         }
         .pro-risk-high { background: rgba(255, 77, 77, 0.12); color: #FF4D4D; border: 1px solid rgba(255, 77, 77, 0.25); }
         .pro-risk-mid { background: rgba(255, 193, 7, 0.12); color: #FFC107; border: 1px solid rgba(255, 193, 7, 0.25); }
@@ -336,7 +387,7 @@ def load_css():
         .pro-level-card {
             background: rgba(0, 0, 0, 0.15);
             border-radius: 4px;
-            padding: 0.5rem;
+            padding: 0.45rem;
             text-align: center;
             border: 1px solid rgba(42, 45, 62, 0.3);
         }
@@ -348,7 +399,7 @@ def load_css():
         .pro-scenario-card {
             background: rgba(0, 0, 0, 0.15);
             border-radius: 4px;
-            padding: 0.6rem;
+            padding: 0.55rem;
             border: 1px solid rgba(42, 45, 62, 0.3);
             height: 100%;
         }
@@ -361,8 +412,8 @@ def load_css():
             background: rgba(0, 0, 0, 0.15);
             border: 1px solid rgba(42, 45, 62, 0.3);
             border-radius: 4px;
-            padding: 0.4rem 0.6rem;
-            margin-bottom: 0.5rem;
+            padding: 0.35rem 0.55rem;
+            margin-bottom: 0.45rem;
         }
 
         /* ===== 信号指示灯 ===== */
@@ -380,23 +431,23 @@ def load_css():
         .pro-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.7rem;
+            font-size: 0.68rem;
         }
         .pro-table th {
             background: rgba(0, 212, 170, 0.06);
             color: #00D4AA;
-            padding: 0.3rem 0.4rem;
+            padding: 0.28rem 0.38rem;
             text-align: left;
             font-weight: 600;
-            font-size: 0.65rem;
+            font-size: 0.62rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             border-bottom: 1px solid rgba(0, 212, 170, 0.15);
         }
         .pro-table td {
-            padding: 0.25rem 0.4rem;
+            padding: 0.22rem 0.38rem;
             border-bottom: 1px solid rgba(42, 45, 62, 0.3);
-            color: #C0C4D0;
+            color: #B0B4C0;
         }
         .pro-table tr:hover td {
             background: rgba(0, 212, 170, 0.02);
@@ -406,22 +457,22 @@ def load_css():
         .pro-rating-scale {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.65rem;
-            margin: 0.3rem 0;
+            font-size: 0.62rem;
+            margin: 0.25rem 0;
         }
         .pro-rating-scale th {
             background: rgba(0, 212, 170, 0.06);
             color: #00D4AA;
-            padding: 0.25rem 0.4rem;
+            padding: 0.22rem 0.38rem;
             text-align: left;
             font-weight: 600;
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             border-bottom: 1px solid rgba(0, 212, 170, 0.12);
         }
         .pro-rating-scale td {
-            padding: 0.2rem 0.4rem;
+            padding: 0.18rem 0.38rem;
             border-bottom: 1px solid rgba(42, 45, 62, 0.2);
             color: #8892B0;
             vertical-align: top;
@@ -438,18 +489,18 @@ def load_css():
         }
         .pro-rating-scale .scale-range {
             font-weight: 700;
-            font-size: 0.7rem;
+            font-size: 0.68rem;
         }
         .pro-rating-scale .scale-rating {
             font-weight: 600;
         }
         .pro-rating-scale .scale-meaning {
-            color: #4A4D5E;
-            font-size: 0.6rem;
+            color: #5D6070;
+            font-size: 0.58rem;
             line-height: 1.3;
         }
         .pro-rating-scale .scale-action {
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 600;
         }
         .pro-rating-scale .active-row td {
@@ -461,49 +512,49 @@ def load_css():
         .pro-scoring-detail {
             background: rgba(0, 0, 0, 0.2);
             border-radius: 4px;
-            padding: 0.5rem 0.6rem;
-            margin: 0.2rem 0 0.4rem 0;
+            padding: 0.45rem 0.55rem;
+            margin: 0.18rem 0 0.35rem 0;
             border-left: 2px solid rgba(0, 212, 170, 0.25);
         }
         .pro-scoring-detail-label {
             color: #00D4AA;
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 0.2rem;
+            margin-bottom: 0.18rem;
         }
         .pro-scoring-detail-text {
-            color: #4A4D5E;
-            font-size: 0.68rem;
+            color: #5D6070;
+            font-size: 0.65rem;
             line-height: 1.4;
         }
         .pro-scoring-summary-box {
             background: rgba(0, 212, 170, 0.04);
             border: 1px solid rgba(0, 212, 170, 0.12);
             border-radius: 4px;
-            padding: 0.5rem 0.6rem;
-            margin: 0.4rem 0;
+            padding: 0.45rem 0.55rem;
+            margin: 0.35rem 0;
         }
         .pro-scoring-summary-label {
             color: #00D4AA;
-            font-size: 0.65rem;
+            font-size: 0.62rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 0.3rem;
+            margin-bottom: 0.25rem;
         }
         .pro-scoring-summary-text {
-            color: #4A4D5E;
-            font-size: 0.7rem;
+            color: #5D6070;
+            font-size: 0.68rem;
             line-height: 1.5;
         }
         .pro-scoring-toggle {
             color: #00A3FF;
-            font-size: 0.65rem;
+            font-size: 0.62rem;
             cursor: pointer;
             user-select: none;
-            padding: 0.15rem 0.4rem;
+            padding: 0.12rem 0.35rem;
             border-radius: 3px;
             background: rgba(0, 163, 255, 0.08);
             display: inline-block;
@@ -516,49 +567,49 @@ def load_css():
             background: rgba(255, 193, 7, 0.04);
             border: 1px solid rgba(255, 193, 7, 0.12);
             border-radius: 4px;
-            padding: 0.4rem 0.6rem;
-            margin: 0.2rem 0;
+            padding: 0.35rem 0.55rem;
+            margin: 0.18rem 0;
         }
         .pro-scoring-criteria-label {
             color: #FFC107;
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         .pro-scoring-criteria-text {
-            color: #4A4D5E;
-            font-size: 0.65rem;
+            color: #5D6070;
+            font-size: 0.62rem;
             line-height: 1.4;
         }
         .pro-data-source-box {
             background: rgba(0, 163, 255, 0.04);
             border: 1px solid rgba(0, 163, 255, 0.12);
             border-radius: 4px;
-            padding: 0.4rem 0.6rem;
-            margin: 0.2rem 0;
+            padding: 0.35rem 0.55rem;
+            margin: 0.18rem 0;
         }
         .pro-data-source-label {
             color: #00A3FF;
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         .pro-data-source-text {
-            color: #4A4D5E;
-            font-size: 0.65rem;
+            color: #5D6070;
+            font-size: 0.62rem;
             line-height: 1.4;
         }
 
         /* ===== 输入框 ===== */
         .pro-input {
-            background: #12151E !important;
-            border: 1px solid #1E2130 !important;
+            background: #1A1D28 !important;
+            border: 1px solid #252836 !important;
             border-radius: 4px !important;
-            color: #C0C4D0 !important;
-            font-size: 0.85rem !important;
-            padding: 0.5rem 0.6rem !important;
+            color: #B0B4C0 !important;
+            font-size: 0.82rem !important;
+            padding: 0.45rem 0.55rem !important;
         }
         .pro-input:focus {
             border-color: #00D4AA !important;
@@ -568,11 +619,11 @@ def load_css():
         /* ===== 市场标签 ===== */
         .pro-market-tag {
             display: inline-block;
-            padding: 0.1rem 0.35rem;
+            padding: 0.08rem 0.32rem;
             border-radius: 3px;
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 600;
-            margin-left: 0.2rem;
+            margin-left: 0.18rem;
         }
         .pro-market-a { background: rgba(255, 77, 77, 0.15); color: #FF4D4D; }
         .pro-market-hk { background: rgba(255, 193, 7, 0.15); color: #FFC107; }
@@ -582,10 +633,10 @@ def load_css():
         .pro-quick-btn {
             background: rgba(42, 45, 62, 0.3) !important;
             border: 1px solid rgba(42, 45, 62, 0.5) !important;
-            color: #4A4D5E !important;
+            color: #5D6070 !important;
             border-radius: 3px !important;
-            padding: 0.15rem 0.5rem !important;
-            font-size: 0.65rem !important;
+            padding: 0.12rem 0.45rem !important;
+            font-size: 0.62rem !important;
             font-weight: 500 !important;
             transition: all 0.15s !important;
         }
@@ -599,25 +650,25 @@ def load_css():
         .pro-indicator-card {
             background: rgba(0, 0, 0, 0.15);
             border-radius: 4px;
-            padding: 0.4rem;
+            padding: 0.35rem;
             text-align: center;
             border: 1px solid rgba(42, 45, 62, 0.3);
         }
         .pro-indicator-value {
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 700;
         }
         .pro-indicator-label {
-            font-size: 0.6rem;
-            color: #4A4D5E;
-            margin-top: 0.15rem;
+            font-size: 0.58rem;
+            color: #5D6070;
+            margin-top: 0.12rem;
         }
 
         /* ===== 信号强度条 ===== */
         .pro-signal-bar {
             height: 3px;
             border-radius: 2px;
-            margin-top: 0.2rem;
+            margin-top: 0.18rem;
             transition: width 0.5s ease;
         }
 
@@ -625,8 +676,8 @@ def load_css():
         .app-footer {
             text-align: center;
             color: #2A2D3E;
-            font-size: 0.65rem;
-            padding: 0.5rem 0;
+            font-size: 0.62rem;
+            padding: 0.45rem 0;
             line-height: 1.6;
         }
     </style>
