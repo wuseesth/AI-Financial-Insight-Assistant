@@ -364,6 +364,100 @@ def load_css():
             background: rgba(0, 212, 170, 0.03);
         }
 
+        /* ===== 评分详情展开面板 ===== */
+        .pro-scoring-detail {
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            margin: 0.3rem 0 0.6rem 0;
+            border-left: 3px solid rgba(0, 212, 170, 0.3);
+        }
+        .pro-scoring-detail-label {
+            color: #00D4AA;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.3rem;
+        }
+        .pro-scoring-detail-text {
+            color: #8892B0;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+        .pro-scoring-summary-box {
+            background: linear-gradient(135deg, rgba(0, 212, 170, 0.08), rgba(0, 163, 255, 0.08));
+            border: 1px solid rgba(0, 212, 170, 0.2);
+            border-radius: 12px;
+            padding: 1rem 1.2rem;
+            margin: 0.8rem 0;
+        }
+        .pro-scoring-summary-label {
+            color: #00D4AA;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        .pro-scoring-summary-text {
+            color: #8892B0;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+        .pro-scoring-toggle {
+            color: #00A3FF;
+            font-size: 0.75rem;
+            cursor: pointer;
+            user-select: none;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(0, 163, 255, 0.1);
+            display: inline-block;
+            transition: all 0.2s;
+        }
+        .pro-scoring-toggle:hover {
+            background: rgba(0, 163, 255, 0.2);
+        }
+        .pro-scoring-criteria-box {
+            background: rgba(255, 193, 7, 0.05);
+            border: 1px solid rgba(255, 193, 7, 0.15);
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            margin: 0.3rem 0;
+        }
+        .pro-scoring-criteria-label {
+            color: #FFC107;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pro-scoring-criteria-text {
+            color: #8892B0;
+            font-size: 0.72rem;
+            line-height: 1.5;
+        }
+        .pro-data-source-box {
+            background: rgba(0, 163, 255, 0.05);
+            border: 1px solid rgba(0, 163, 255, 0.15);
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            margin: 0.3rem 0;
+        }
+        .pro-data-source-label {
+            color: #00A3FF;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pro-data-source-text {
+            color: #8892B0;
+            font-size: 0.72rem;
+            line-height: 1.5;
+        }
+
         /* 专业输入框 */
         .pro-input {
             background: #1A1D27 !important;
@@ -1020,7 +1114,7 @@ def render_hotspot_result(result: Dict[str, Any]):
 # 股票深度解码结果渲染（机构级 Bloomberg 终端风格）
 # ============================================================
 def _render_scorecard(sc: Dict[str, Any]):
-    """渲染综合评分卡（Scorecard）"""
+    """渲染综合评分卡（Scorecard）- 企业级增强版"""
     if not sc:
         return
     overall_rating = sc.get("overall_rating", "Hold")
@@ -1038,6 +1132,7 @@ def _render_scorecard(sc: Dict[str, Any]):
     st.markdown("## 📊 综合评分卡")
     st.markdown("---")
 
+    # ---- 评级徽章 + 综合评分 ----
     col1, col2 = st.columns([1, 2])
     with col1:
         st.markdown(
@@ -1061,31 +1156,71 @@ def _render_scorecard(sc: Dict[str, Any]):
             unsafe_allow_html=True,
         )
 
+    # ---- 评分方法论摘要（可展开） ----
+    scoring_summary = sc.get("scoring_summary", "")
+    scoring_data_sources = sc.get("scoring_data_sources", "")
+    scoring_criteria = sc.get("scoring_criteria", "")
+    if scoring_summary or scoring_data_sources or scoring_criteria:
+        with st.expander("📋 评分方法论 · 数据来源 · 评分标准", expanded=False):
+            if scoring_summary:
+                st.markdown(
+                    f'<div class="pro-scoring-summary-box">'
+                    f'<div class="pro-scoring-summary-label">📐 评分方法论</div>'
+                    f'<div class="pro-scoring-summary-text">{scoring_summary}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            if scoring_data_sources:
+                st.markdown(
+                    f'<div class="pro-data-source-box">'
+                    f'<div class="pro-data-source-label">📡 数据来源</div>'
+                    f'<div class="pro-data-source-text">{scoring_data_sources}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            if scoring_criteria:
+                st.markdown(
+                    f'<div class="pro-scoring-criteria-box">'
+                    f'<div class="pro-scoring-criteria-label">⚖️ 评分标准总则</div>'
+                    f'<div class="pro-scoring-criteria-text">{scoring_criteria}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ---- 六维评分（含评分依据/数据来源/评分标准详情） ----
     dimensions = sc.get("dimensions", {})
     if dimensions and isinstance(dimensions, dict):
         st.markdown("### 📐 六维评分")
         dim_config = [
-            ("market_identity", "市场身份", "#00A3FF"),
-            ("technical", "技术面", "#00D4AA"),
-            ("fundamental", "基本面", "#9C27B0"),
-            ("sentiment", "情绪面", "#FFC107"),
-            ("risk_reward", "风险收益", "#FF9800"),
-            ("liquidity", "流动性", "#E040FB"),
+            ("market_identity", "市场身份", "#00A3FF", "🏛️"),
+            ("technical", "技术面", "#00D4AA", "📈"),
+            ("fundamental", "基本面", "#9C27B0", "📊"),
+            ("sentiment", "情绪面", "#FFC107", "🔥"),
+            ("risk_reward", "风险收益", "#FF9800", "⚖️"),
+            ("liquidity", "流动性", "#E040FB", "💧"),
         ]
-        for key, dim_label, dim_color in dim_config:
+        for key, dim_label, dim_color, dim_icon in dim_config:
             dim_score = dimensions.get(key, {})
             if isinstance(dim_score, dict):
                 score_val = dim_score.get("score", 50)
                 comment = dim_score.get("comment", "")
+                scoring_basis = dim_score.get("scoring_basis", "")
+                data_sources = dim_score.get("data_sources", "")
+                scoring_criteria = dim_score.get("scoring_criteria", "")
             else:
                 score_val = dim_score if isinstance(dim_score, (int, float)) else 50
                 comment = ""
+                scoring_basis = ""
+                data_sources = ""
+                scoring_criteria = ""
             score_val = min(max(score_val, 0), 100)
             bar_color = "#00D4AA" if score_val >= 60 else "#FFC107" if score_val >= 40 else "#FF4D4D"
+
+            # 评分条 + 评分按钮
             st.markdown(
                 f'<div style="margin:0.5rem 0;">'
-                f'<div style="display:flex;justify-content:space-between;">'
-                f'<span class="pro-dimension-label" style="color:{dim_color};">{dim_label}</span>'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                f'<span class="pro-dimension-label" style="color:{dim_color};font-size:0.8rem;">{dim_icon} {dim_label}</span>'
                 f'<span class="pro-dimension-score" style="color:{bar_color};">{score_val}</span>'
                 f'</div>'
                 f'<div class="pro-dimension-bar" style="background:rgba(42,45,62,0.5);">'
@@ -1096,6 +1231,37 @@ def _render_scorecard(sc: Dict[str, Any]):
                 unsafe_allow_html=True,
             )
 
+            # 评分详情（可展开）- 使用 st.expander 实现
+            has_details = any([scoring_basis, data_sources, scoring_criteria])
+            if has_details:
+                detail_key = f"scoring_detail_{key}"
+                with st.expander(f"📖 查看 {dim_label} 评分详情", expanded=False):
+                    if scoring_basis:
+                        st.markdown(
+                            f'<div class="pro-scoring-detail">'
+                            f'<div class="pro-scoring-detail-label">📌 评分依据</div>'
+                            f'<div class="pro-scoring-detail-text">{scoring_basis}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    if data_sources:
+                        st.markdown(
+                            f'<div class="pro-data-source-box">'
+                            f'<div class="pro-data-source-label">📡 数据来源</div>'
+                            f'<div class="pro-data-source-text">{data_sources}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    if scoring_criteria:
+                        st.markdown(
+                            f'<div class="pro-scoring-criteria-box">'
+                            f'<div class="pro-scoring-criteria-label">⚖️ 评分标准</div>'
+                            f'<div class="pro-scoring-criteria-text">{scoring_criteria}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+    # ---- 关键风险 ----
     risks = sc.get("key_risks", [])
     if risks and isinstance(risks, list):
         st.markdown("### ⚠️ 关键风险")
@@ -1105,6 +1271,7 @@ def _render_scorecard(sc: Dict[str, Any]):
             risk_html += f'<span class="pro-risk-tag pro-risk-{risk_level}">{r}</span> '
         st.markdown(f'<div>{risk_html}</div>', unsafe_allow_html=True)
 
+    # ---- 关键催化剂 ----
     catalysts = sc.get("key_catalysts", [])
     if catalysts and isinstance(catalysts, list):
         st.markdown("### 🚀 关键催化剂")
