@@ -364,6 +364,62 @@ def load_css():
             background: rgba(0, 212, 170, 0.03);
         }
 
+        /* ===== 评级刻度表 ===== */
+        .pro-rating-scale {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.72rem;
+            margin: 0.5rem 0;
+        }
+        .pro-rating-scale th {
+            background: rgba(0, 212, 170, 0.08);
+            color: #00D4AA;
+            padding: 0.4rem 0.5rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(0, 212, 170, 0.15);
+        }
+        .pro-rating-scale td {
+            padding: 0.35rem 0.5rem;
+            border-bottom: 1px solid rgba(42, 45, 62, 0.3);
+            color: #C0C4D0;
+            vertical-align: top;
+        }
+        .pro-rating-scale tr:hover td {
+            background: rgba(0, 212, 170, 0.03);
+        }
+        .pro-rating-scale .scale-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .pro-rating-scale .scale-range {
+            font-weight: 700;
+            font-size: 0.78rem;
+        }
+        .pro-rating-scale .scale-rating {
+            font-weight: 600;
+        }
+        .pro-rating-scale .scale-meaning {
+            color: #8892B0;
+            font-size: 0.68rem;
+            line-height: 1.4;
+        }
+        .pro-rating-scale .scale-action {
+            font-size: 0.68rem;
+            font-weight: 600;
+        }
+        .pro-rating-scale .active-row td {
+            background: rgba(0, 212, 170, 0.08) !important;
+            border-left: 3px solid #00D4AA;
+        }
+
         /* ===== 评分详情展开面板 ===== */
         .pro-scoring-detail {
             background: rgba(0, 0, 0, 0.25);
@@ -1155,6 +1211,49 @@ def _render_scorecard(sc: Dict[str, Any]):
             f'</div></div>',
             unsafe_allow_html=True,
         )
+
+    # ---- 评级刻度表（专业机构级分段定义） ----
+    rating_scale = sc.get("rating_scale", [])
+    if rating_scale and isinstance(rating_scale, list):
+        with st.expander("📊 评级刻度表 — 评分分段标准定义", expanded=False):
+            scale_rows = ""
+            for item in rating_scale:
+                r = item.get("range", "")
+                rating = item.get("rating", "")
+                meaning = item.get("meaning", "")
+                action = item.get("action", "")
+                color = item.get("color", "#8892B0")
+                is_active = False
+                if r:
+                    parts = r.split("-")
+                    if len(parts) == 2:
+                        try:
+                            low, high = int(parts[0]), int(parts[1])
+                            is_active = low <= overall_score <= high
+                        except ValueError:
+                            pass
+                active_class = "active-row" if is_active else ""
+                scale_rows += (
+                    f'<tr class="{active_class}">'
+                    f'<td><span class="scale-indicator" style="background:{color};"></span>'
+                    f'<span class="scale-range">{r}</span></td>'
+                    f'<td><span class="scale-rating" style="color:{color};">{rating}</span></td>'
+                    f'<td><div class="scale-meaning">{meaning}</div></td>'
+                    f'<td><span class="scale-action" style="color:{color};">{action}</span></td>'
+                    f'</tr>'
+                )
+            st.markdown(
+                f'<table class="pro-rating-scale">'
+                f'<thead><tr>'
+                f'<th style="width:10%;">分数段</th>'
+                f'<th style="width:18%;">评级</th>'
+                f'<th style="width:52%;">含义解读</th>'
+                f'<th style="width:20%;">建议操作</th>'
+                f'</tr></thead>'
+                f'<tbody>{scale_rows}</tbody>'
+                f'</table>',
+                unsafe_allow_html=True,
+            )
 
     # ---- 评分方法论摘要（可展开） ----
     scoring_summary = sc.get("scoring_summary", "")
