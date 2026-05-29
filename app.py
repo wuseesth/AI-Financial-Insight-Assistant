@@ -23,6 +23,7 @@ from services.api_client import APIClient, get_available_backends, get_backend_m
 from services.market_data import MarketDataService
 from services.report_export import ReportExporter
 from services.technical_indicators import TechnicalIndicators
+from services.realtime_market_data import RealtimeMarketDataService
 from prompts.financial_prompts import PromptManager
 from utils.helpers import parse_json_response
 from utils.config import AppConfig
@@ -2086,14 +2087,30 @@ def render_stock_decode_page():
         )
 
     if analyze_btn and stock_input:
-        with st.spinner("🔄 AI 正在深度分析，请稍候..."):
+        # ===== 第一步：获取实时市场数据 =====
+        realtime_data_text = ""
+        with st.spinner("📡 正在获取实时市场数据..."):
+            try:
+                from services.realtime_market_data import RealtimeMarketDataService
+                market_data = RealtimeMarketDataService.get_comprehensive_market_data(stock_input.strip())
+                realtime_data_text = RealtimeMarketDataService.format_market_data_for_prompt(market_data)
+            except Exception as e:
+                realtime_data_text = f"【实时数据获取失败: {str(e)}，AI 将基于训练知识进行分析】"
+
+        # ===== 第二步：AI 深度分析（注入真实数据） =====
+        with st.spinner("🔄 AI 正在基于实时数据进行深度分析，请稍候..."):
             try:
                 if not st.session_state.api_client:
                     st.error("⚠️ 请先在侧边栏配置 API 密钥")
                     return
                 prompt_template = PromptManager.get_prompt("stock_deep_decode")
+                # 将实时数据注入 Prompt
+                filled_prompt = prompt_template.format(
+                    user_stock_input=stock_input,
+                    realtime_market_data=realtime_data_text,
+                )
                 result_text = st.session_state.api_client.analyze_stock_deep_decode(
-                    stock_input, prompt_template
+                    stock_input, filled_prompt
                 )
                 result = parse_json_response(result_text)
 

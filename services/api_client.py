@@ -219,11 +219,19 @@ class APIClient:
 
         Args:
             stock_input: 股票代码或名称
-            prompt_template: 分析提示词模板
+            prompt_template: 分析提示词模板（可包含 {user_stock_input} 占位符，
+                             也可传入已预格式化好的完整 prompt）
 
         Returns:
             多维度深度解码报告
         """
+        # 检查 prompt 是否已预格式化（不再包含占位符）
+        if "{user_stock_input}" in prompt_template:
+            user_content = prompt_template.format(user_stock_input=stock_input)
+        else:
+            # 已预格式化（如已注入实时市场数据），直接使用
+            user_content = prompt_template
+
         messages = [
             {
                 "role": "system",
@@ -236,7 +244,7 @@ class APIClient:
             },
             {
                 "role": "user",
-                "content": prompt_template.format(user_stock_input=stock_input),
+                "content": user_content,
             },
         ]
         return self.chat(messages, temperature=0.3, max_tokens=8192)
