@@ -24,9 +24,15 @@ from services.market_data import MarketDataService
 from services.report_export import ReportExporter
 from services.technical_indicators import TechnicalIndicators
 from services.realtime_market_data import RealtimeMarketDataService
+from services.scoring_engine import ScoringEngine
 from prompts.financial_prompts import PromptManager
 from utils.helpers import parse_json_response
 from utils.config import AppConfig
+
+# Plotly 可视化
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 # ============================================================
 # 页面配置（必须在第一个 st 命令之前）
@@ -2134,11 +2140,483 @@ def render_hotspot_analysis_page():
         st.warning("⚠️ 请输入新闻内容")
 
 
+# ============================================================
+# 股票深度解码 - 辅助渲染函数
+# ============================================================
+
+
+def _render_radar_chart(scores: Dict[str, float]) -> go.Figure:
+    """绘制六维评分雷达图"""
+    dimensions = [
+        "市场身份", "技术面", "基本面", "情绪面", "风险收益", "流动性"
+    ]
+    dim_keys = ["market_identity", "technical", "fundamental",
+                "sentiment", "risk_reward", "liquidity"]
+
+    values = [scores.get(k, 0) for k in dim_keys]
+    values_closed = values + [values[0]]
+    dims_closed = dimensions + [dimensions[0]]
+
+    fig = go.Figure()
+    # 60分参考线
+    fig.add_trace(go.Scatterpolar(
+        r=[60] * len(dims_closed),
+        theta=dims_closed,
+        name="及格线 (60)",
+        line=dict(color="rgba(255, 255, 255, 0.15)", width=1, dash="dash"),
+        showlegend=True,
+    ))
+    # 评分区域
+    fig.add_trace(go.Scatterpolar(
+        r=values_closed,
+        theta=dims_closed,
+        fill="toself",
+        name="评分",
+        line=dict(color="#00D4AA", width=2),
+        fillcolor="rgba(0, 212, 170, 0.2)",
+    ))
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                tickfont=dict(color="#8892B0", size=10),
+                gridcolor="rgba(255,255,255,0.08)",
+            ),
+            angularaxis=dict(
+                tickfont=dict(color="#CCD6F6", size=12),
+                gridcolor="rgba(255,255,255,0.08)",
+            ),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#CCD6F6"),
+        margin=dict(l=80, r=80, t=30, b=30),
+        height=400,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.12,
+            xanchor="center",
+            x=0.5,
+            font=dict(color="#8892B0", size=11),
+        ),
+    )
+    return fig
+
+
+def _render_gauge_chart(score: float) -> go.Figure:
+    """绘制仪表盘评分图"""
+    # 颜色分段
+    if score >= 90:
+        color = "#00D4AA"
+    elif score >= 75:
+        color = "#00E676"
+    elif score >= 60:
+        color = "#76FF03"
+    elif score >= 45:
+        color = "#FFC107"
+    elif score >= 30:
+        color = "#FF9800"
+    elif score >= 15:
+        color = "#FF4D4D"
+    else:
+        color = "#D32F2F"
+
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=score,
+        number=dict(
+            font=dict(size=48, color=color, family="Arial Black"),
+            suffix=" 分",
+        ),
+        gauge=dict(
+            axis=dict(
+                range=[0, 100],
+                tickwidth=1,
+                tickcolor="#8892B0",
+                tickfont=dict(size=11, color="#8892B0"),
+                nticks=11,
+            ),
+            bar=dict(color=color, thickness=0.3),
+            bgcolor="rgba(0,0,0,0)",
+            borderwidth=0,
+            steps=[
+                dict(range=[0, 15], color="rgba(211,47,47,0.15)"),
+                dict(range=[15, 30], color="rgba(255,77,77,0.12)"),
+                dict(range=[30, 45], color="rgba(255,152,0,0.12)"),
+                dict(range=[45, 60], color="rgba(255,193,7,0.12)"),
+                dict(range=[60, 75], color="rgba(118,255,3,0.10)"),
+                dict(range=[75, 90], color="rgba(0,230,118,0.10)"),
+                dict(range=[90, 100], color="rgba(0,212,170,0.12)"),
+            ],
+            threshold=dict(
+                line=dict(color="white", width=3),
+                thickness=0.6,
+                value=score,
+            ),
+        ),
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#CCD6F6"),
+        margin=dict(l=30, r=30, t=30, b=30),
+        height=280,
+    )
+    return fig
+
+
+def _render_fund_flow_chart(market_data: Dict[str, Any]) -> Optional[go.Figure]:
+    """绘制资金流向柱状图"""
+    fund_flow = market_data.get("fund_flow", {})
+    if not fund_flow:
+        return None
+
+    categories = ["主力净流入", "超大单净流入", "大单净流入", "中单净流入", "小单净流入"]
+    keys = ["main_net_inflow", "super_large_net_inflow", "large_net_inflow",
+            "medium_net_inflow", "small_net_inflow"]
+    values = []
+    for k in keys:
+        v = fund_flow.get(k, 0)
+        try:
+            values.append(float(str(v).replace(",", "").replace("亿", "").replace("元", "").strip()))
+        except (ValueError, TypeError):
+            values.append(0)
+
+    colors = ["#00D4AA" if v >= 0 else "#FF4D4D" for v in values]
+
+    fig = go.Figure(go.Bar(
+        x=categories,
+        y=values,
+        marker_color=colors,
+        marker_line=dict(width=0),
+        text=[f"{v:.2f}亿" if abs(v) > 0 else "0" for v in values],
+        textposition="outside",
+        textfont=dict(color="#CCD6F6", size=12),
+    ))
+    fig.update_layout(
+        title=dict(
+            text="实时资金流向 (单位: 亿元)",
+            font=dict(color="#CCD6F6", size=14),
+            x=0.5,
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#8892B0"),
+        xaxis=dict(
+            tickfont=dict(color="#CCD6F6", size=11),
+            gridcolor="rgba(255,255,255,0.05)",
+        ),
+        yaxis=dict(
+            tickfont=dict(color="#8892B0", size=10),
+            gridcolor="rgba(255,255,255,0.05)",
+            zerolinecolor="rgba(255,255,255,0.15)",
+        ),
+        margin=dict(l=50, r=50, t=50, b=30),
+        height=350,
+        hovermode="x",
+    )
+    return fig
+
+
+def _render_realtime_quote_panel(market_data: Dict[str, Any], stock_input: str):
+    """渲染实时报价面板"""
+    quote = market_data.get("quote", {})
+    tech = market_data.get("technical", {})
+
+    # 主要指标
+    st.markdown("### 💹 实时行情")
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    with col1:
+        price = quote.get("current", quote.get("price", "N/A"))
+        change = quote.get("change", quote.get("change_pct", ""))
+        change_str = str(change)
+        is_up = "+" in change_str or (change_str not in ["N/A", "", "0"] and float(change_str.replace("%", "")) > 0) if change_str.replace("%", "").replace(".", "").replace("-", "").isdigit() else False
+        st.metric("最新价", price, change)
+    with col2:
+        st.metric("开盘", quote.get("open", "N/A"))
+    with col3:
+        st.metric("最高", quote.get("high", "N/A"))
+    with col4:
+        st.metric("最低", quote.get("low", "N/A"))
+    with col5:
+        st.metric("昨收", quote.get("pre_close", quote.get("close", "N/A")))
+    with col6:
+        st.metric("成交量", quote.get("volume", "N/A"))
+
+    # 扩展指标
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("成交额", quote.get("amount", tech.get("amount", "N/A")))
+    with col2:
+        turnover = quote.get("turnover_rate", tech.get("turnover", "N/A"))
+        st.metric("换手率", turnover)
+    with col3:
+        pe = quote.get("pe", tech.get("pe", "N/A"))
+        st.metric("市盈率(PE)", pe)
+    with col4:
+        mcap = quote.get("market_cap", tech.get("market_cap", "N/A"))
+        st.metric("总市值", mcap)
+
+
+def _render_score_dashboard(scorecard: Dict[str, Any], market_data: Dict[str, Any]):
+    """渲染综合评分仪表盘 Tab"""
+    overall_score = scorecard.get("overall_score", 0)
+    rating = scorecard.get("overall_rating", "N/A")
+    dimensions = scorecard.get("dimensions", {})
+    rating_summary = scorecard.get("rating_summary", "")
+    key_risks = scorecard.get("key_risks", [])
+    key_catalysts = scorecard.get("key_catalysts", [])
+
+    # 顶部：仪表盘 + 评级
+    col_gauge, col_rating = st.columns([1, 1])
+    with col_gauge:
+        gauge_fig = _render_gauge_chart(overall_score)
+        st.plotly_chart(gauge_fig, use_container_width=True, config={"displayModeBar": False})
+
+    with col_rating:
+        st.markdown(f"""
+        <div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:1.5rem;height:100%;display:flex;flex-direction:column;justify-content:center;">
+            <div style="color:#8892B0;font-size:0.85rem;margin-bottom:0.5rem;">综合评级</div>
+            <div style="font-size:1.8rem;font-weight:700;color:#00D4AA;">{rating}</div>
+            <div style="color:#6A6D7E;font-size:0.8rem;margin-top:0.5rem;line-height:1.5;">{rating_summary}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 评级刻度表
+    rating_scale = scorecard.get("rating_scale", [])
+    if rating_scale:
+        with st.expander("📊 评级刻度表 — 评分分段标准定义", expanded=False):
+            scale_html = '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;">'
+            for s in rating_scale:
+                color = s.get("color", "#666")
+                scale_html += f'''
+                <div style="flex:1;min-width:120px;background:rgba(255,255,255,0.03);border-radius:8px;padding:0.8rem;border-left:3px solid {color};">
+                    <div style="color:{color};font-size:1.1rem;font-weight:700;">{s["range"]}</div>
+                    <div style="color:#CCD6F6;font-size:0.8rem;">{s["rating"]}</div>
+                    <div style="color:#6A6D7E;font-size:0.7rem;margin-top:0.3rem;">{s["action"]}</div>
+                </div>
+                '''
+            scale_html += '</div>'
+            st.markdown(scale_html, unsafe_allow_html=True)
+
+    # 雷达图 + 各维度评分
+    st.markdown("### 🎯 六维评分雷达")
+    scores_dict = {k: v.get("score", 0) for k, v in dimensions.items()}
+    radar_fig = _render_radar_chart(scores_dict)
+    st.plotly_chart(radar_fig, use_container_width=True, config={"displayModeBar": False})
+
+    # 各维度评分详情
+    st.markdown("### 📊 各维度评分详情")
+    dim_labels = {
+        "market_identity": "市场身份", "technical": "技术面",
+        "fundamental": "基本面", "sentiment": "情绪面",
+        "risk_reward": "风险收益", "liquidity": "流动性",
+    }
+    for key, label in dim_labels.items():
+        dim = dimensions.get(key, {})
+        score = dim.get("score", 0)
+        comment = dim.get("comment", "")
+        basis = dim.get("scoring_basis", "")
+        criteria = dim.get("scoring_criteria", "")
+
+        # 颜色
+        if score >= 80:
+            bar_color = "#00D4AA"
+        elif score >= 60:
+            bar_color = "#FFC107"
+        elif score >= 40:
+            bar_color = "#FF9800"
+        else:
+            bar_color = "#FF4D4D"
+
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            st.markdown(f"**{label}**")
+        with col2:
+            st.progress(score / 100, text=f"{score:.0f}/100")
+            st.markdown(
+                f'<div style="color:#6A6D7E;font-size:0.8rem;">{comment}</div>',
+                unsafe_allow_html=True,
+            )
+            with st.expander(f"📖 查看 {label} 评分详情", expanded=False):
+                st.markdown(f"""
+                <div style="background:rgba(0,0,0,0.15);border-radius:8px;padding:1rem;">
+                    <div style="color:#8892B0;font-size:0.8rem;margin-bottom:0.3rem;">📌 评分依据</div>
+                    <div style="color:#CCD6F6;font-size:0.9rem;margin-bottom:0.8rem;">{basis}</div>
+                    <div style="color:#8892B0;font-size:0.8rem;margin-bottom:0.3rem;">📋 评分标准</div>
+                    <div style="color:#6A6D7E;font-size:0.85rem;">{criteria}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # 关键风险与催化剂
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        st.markdown("### ⚠️ 关键风险")
+        if key_risks:
+            for risk in key_risks:
+                st.markdown(f"- 🔴 {risk}")
+        else:
+            st.info("暂无显著风险信号")
+    with col_r2:
+        st.markdown("### 🚀 关键催化剂")
+        if key_catalysts:
+            for cat in key_catalysts:
+                st.markdown(f"- 🟢 {cat}")
+        else:
+            st.info("暂无显著催化剂信号")
+
+    # 评分方法论说明
+    with st.expander("📋 评分方法论 · 数据来源 · 评分标准", expanded=False):
+        st.markdown(f"""
+        <div style="background:rgba(0,0,0,0.15);border-radius:8px;padding:1rem;">
+            <div style="color:#8892B0;font-size:0.85rem;margin-bottom:0.5rem;">📊 评分模型说明</div>
+            <div style="color:#CCD6F6;font-size:0.9rem;margin-bottom:1rem;">{scorecard.get("scoring_summary", "")}</div>
+            <div style="color:#8892B0;font-size:0.85rem;margin-bottom:0.5rem;">📡 数据来源</div>
+            <div style="color:#CCD6F6;font-size:0.9rem;margin-bottom:1rem;">{scorecard.get("scoring_data_sources", "")}</div>
+            <div style="color:#8892B0;font-size:0.85rem;margin-bottom:0.5rem;">📋 评分标准总则</div>
+            <div style="color:#6A6D7E;font-size:0.85rem;">{scorecard.get("scoring_criteria", "")}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def _render_kline_tab(stock_input: str):
+    """渲染K线技术分析 Tab"""
+    st.markdown("### 📈 K线技术分析")
+
+    # 周期选择器
+    period_map = {
+        "近1月": 30, "近3月": 90, "近6月": 180, "近1年": 365, "近3年": 1095
+    }
+    col_period, _ = st.columns([2, 4])
+    with col_period:
+        selected_period = st.selectbox(
+            "选择周期", list(period_map.keys()),
+            index=1, key="kline_period", label_visibility="collapsed",
+        )
+    days = period_map[selected_period]
+
+    with st.spinner(f"正在获取 {selected_period} K线数据..."):
+        try:
+            end_date = datetime.now().strftime("%Y%m%d")
+            start_date = (datetime.now().replace(year=datetime.now().year - 10)).strftime("%Y%m%d")
+            df = MarketDataService.get_stock_history(stock_input.strip(), start_date, end_date)
+            if df is not None and not df.empty:
+                # 过滤周期
+                df = df.tail(days)
+                fig = MarketDataService.plot_candlestick(df, stock_input, title=f"{stock_input} - {selected_period} K线图")
+                st.plotly_chart(fig, use_container_width=True)
+
+                # 技术指标快照
+                indicators = TechnicalIndicators.get_latest_indicators(df)
+                signal = TechnicalIndicators.get_market_signal(df)
+
+                st.markdown("### 📊 技术指标快照")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    ma_signal = signal.get("ma_signal", {})
+                    st.metric("MA信号", ma_signal.get("signal", "N/A"),
+                              ma_signal.get("description", ""))
+                with col2:
+                    macd = indicators.get("macd", {})
+                    st.metric("MACD", macd.get("macd_signal", "N/A"),
+                              macd.get("histogram", ""))
+                with col3:
+                    rsi_val = indicators.get("rsi", {}).get("rsi", "N/A")
+                    st.metric("RSI(14)", rsi_val)
+                with col4:
+                    kdj = indicators.get("kdj", {})
+                    st.metric("KDJ", kdj.get("kdj_signal", "N/A"),
+                              f"K:{kdj.get('k','')} D:{kdj.get('d','')} J:{kdj.get('j','')}")
+
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    bb = indicators.get("bollinger", {})
+                    st.metric("布林带位置", bb.get("position", "N/A"),
+                              bb.get("width", ""))
+                with col2:
+                    vol = indicators.get("volume", {})
+                    st.metric("成交量", vol.get("volume_ratio", "N/A"),
+                              vol.get("volume_ma_status", ""))
+                with col3:
+                    atr_val = indicators.get("atr", {}).get("atr", "N/A")
+                    st.metric("ATR(14)", atr_val)
+                with col4:
+                    obv_val = indicators.get("obv", {}).get("obv_signal", "N/A")
+                    st.metric("OBV", obv_val)
+
+                # 综合信号
+                st.markdown("### 🎯 综合技术信号")
+                overall = signal.get("overall", {})
+                sig = overall.get("signal", "中性")
+                sig_color = {"买入": "#00D4AA", "卖出": "#FF4D4D", "中性": "#FFC107"}.get(sig, "#8892B0")
+                st.markdown(f"""
+                <div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:1.5rem;text-align:center;">
+                    <div style="color:#8892B0;font-size:0.85rem;margin-bottom:0.5rem;">综合技术信号</div>
+                    <div style="font-size:2rem;font-weight:700;color:{sig_color};">{sig}</div>
+                    <div style="color:#6A6D7E;font-size:0.85rem;margin-top:0.5rem;">{overall.get("description", "")}</div>
+                    <div style="color:#6A6D7E;font-size:0.75rem;margin-top:0.3rem;">置信度: {overall.get("confidence", "N/A")}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.warning(f"⚠️ 未能获取 {stock_input} 的K线数据")
+        except Exception as e:
+            st.error(f"❌ 获取K线数据失败: {str(e)}")
+
+
+def _render_fund_flow_tab(market_data: Dict[str, Any]):
+    """渲染资金流向分析 Tab"""
+    _render_realtime_quote_panel(market_data, "")
+
+    # 资金流向图
+    st.markdown("### 💰 资金流向")
+    flow_fig = _render_fund_flow_chart(market_data)
+    if flow_fig:
+        st.plotly_chart(flow_fig, use_container_width=True)
+    else:
+        st.info("资金流向数据不可用")
+
+    # 沪深港通资金流向
+    st.markdown("### 🌐 沪深港通资金流向")
+    north_south = market_data.get("north_south_flow", {})
+    if north_south:
+        col_n1, col_n2, col_n3 = st.columns(3)
+        with col_n1:
+            sh_flow = north_south.get("south_bound_sh", north_south.get("sh_flow", "N/A"))
+            st.metric("沪股通(南向)", sh_flow)
+        with col_n2:
+            sz_flow = north_south.get("south_bound_sz", north_south.get("sz_flow", "N/A"))
+            st.metric("深股通(南向)", sz_flow)
+        with col_n3:
+            total = north_south.get("total", north_south.get("total_flow", "N/A"))
+            st.metric("合计", total)
+    else:
+        st.info("沪深港通数据仅在交易时段可用")
+
+    # 融资融券数据
+    st.markdown("### 📊 融资融券")
+    margin = market_data.get("margin", {})
+    if margin:
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        with col_m1:
+            st.metric("融资余额", margin.get("margin_balance", "N/A"))
+        with col_m2:
+            st.metric("融资买入额", margin.get("margin_buy", "N/A"))
+        with col_m3:
+            st.metric("融券余额", margin.get("short_balance", "N/A"))
+        with col_m4:
+            st.metric("融券卖出量", margin.get("short_sell_volume", "N/A"))
+    else:
+        st.info("融资融券数据仅在交易时段可用")
+
+
 def render_stock_decode_page():
     """股票深度解码页面（机构级交易终端布局）"""
     st.markdown('<div class="page-header">🔍 股票深度解码</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="page-subtitle">机构级多维度分析 — 评分卡 · 技术面 · 资金面 · 风险收益 · 策略建议</div>',
+        '<div class="page-subtitle">机构级多维度分析 — 评分卡 · K线技术分析 · 资金流向 · 深度报告</div>',
         unsafe_allow_html=True,
     )
 
@@ -2170,31 +2648,35 @@ def render_stock_decode_page():
             label_visibility="collapsed",
         )
     with col_btn:
-        analyze_btn = st.button(
-            "🔍 深度解码",
-            type="primary",
-            use_container_width=True,
-        )
+        analyze_btn = st.button("🔍 深度解码", type="primary", use_container_width=True)
 
     if analyze_btn and stock_input:
         # ===== 第一步：获取实时市场数据 =====
+        market_data = {}
         realtime_data_text = ""
         with st.spinner("📡 正在获取实时市场数据..."):
             try:
-                from services.realtime_market_data import RealtimeMarketDataService
                 market_data = RealtimeMarketDataService.get_comprehensive_market_data(stock_input.strip())
                 realtime_data_text = RealtimeMarketDataService.format_market_data_for_prompt(market_data)
             except Exception as e:
                 realtime_data_text = f"【实时数据获取失败: {str(e)}，AI 将基于训练知识进行分析】"
 
-        # ===== 第二步：AI 深度分析（注入真实数据） =====
+        # ===== 第二步：评分引擎计算（基于真实数据，不依赖 AI） =====
+        scorecard = {}
+        if market_data:
+            try:
+                scorecard = ScoringEngine.calculate_all_scores(market_data)
+            except Exception as e:
+                st.warning(f"⚠️ 评分引擎计算异常: {str(e)}")
+
+        # ===== 第三步：AI 深度分析 =====
+        ai_result = {}
         with st.spinner("🔄 AI 正在基于实时数据进行深度分析，请稍候..."):
             try:
                 if not st.session_state.api_client:
                     st.error("⚠️ 请先在侧边栏配置 API 密钥")
                     return
                 prompt_template = PromptManager.get_prompt("stock_deep_decode")
-                # 将实时数据注入 Prompt
                 filled_prompt = prompt_template.format(
                     user_stock_input=stock_input,
                     realtime_market_data=realtime_data_text,
@@ -2202,119 +2684,50 @@ def render_stock_decode_page():
                 result_text = st.session_state.api_client.analyze_stock_deep_decode(
                     stock_input, filled_prompt
                 )
-                result = parse_json_response(result_text)
+                ai_result = parse_json_response(result_text)
 
-                if "error" in result:
-                    st.error(f"❌ 分析失败: {result['error']}")
-                    if "raw_content" in result:
+                if "error" in ai_result:
+                    st.error(f"❌ AI 分析失败: {ai_result['error']}")
+                    if "raw_content" in ai_result:
                         with st.expander("查看原始返回内容"):
-                            st.text(result["raw_content"])
-                else:
-                    # 保存历史
-                    st.session_state.analysis_history.append({
-                        "type": "stock_deep_decode",
-                        "input": stock_input,
-                        "result": result,
-                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    })
-
-                    render_stock_decode_result(result)
-
-                    # ===== 嵌入 K 线图行情 =====
-                    st.markdown("---")
-                    st.markdown(
-                        '<div class="page-header" style="font-size:1.1rem;margin-top:0.5rem;">📈 实时行情 K 线图</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(
-                        f'<div class="page-subtitle">基于 AKShare 实时数据 — {stock_input} 行情走势</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    period_map = {
-                        "1m": "近1个月", "3m": "近3个月", "6m": "近6个月",
-                        "1y": "近1年", "2y": "近2年", "5y": "近5年",
-                    }
-                    kline_period = st.selectbox(
-                        "选择时间范围",
-                        options=list(period_map.keys()),
-                        format_func=lambda x: period_map[x],
-                        index=3,
-                        key=f"kline_period_{stock_input}",
-                    )
-
-                    with st.spinner(f"📡 正在获取 {stock_input} 行情数据..."):
-                        try:
-                            service = MarketDataService()
-                            df = service.get_stock_history(
-                                symbol=stock_input.strip(),
-                                period=kline_period,
-                            )
-
-                            if df is not None and not df.empty:
-                                info = service.get_stock_info(stock_input.strip())
-
-                                if info and not info.get("error"):
-                                    market_tag = {"A股": "🇨🇳", "港股": "🇭🇰", "美股": "🇺🇸"}.get(
-                                        info.get("market", ""), ""
-                                    )
-                                    st.markdown(
-                                        f'<div class="card" style="text-align: center; padding: 1rem;">'
-                                        f'<span style="font-size: 1.5rem; font-weight: 700; color: #00D4AA;">'
-                                        f'{market_tag} {info.get("name", stock_input)} ({stock_input})</span>'
-                                        f'</div>',
-                                        unsafe_allow_html=True,
-                                    )
-
-                                    cols = st.columns(4)
-                                    with cols[0]:
-                                        st.metric("最新价", info.get("price", "—"))
-                                    with cols[1]:
-                                        change = info.get("change", "—")
-                                        change_str = f"{change}%" if change != "—" else "—"
-                                        st.metric("涨跌幅", change_str)
-                                    with cols[2]:
-                                        st.metric("成交量", info.get("volume", "—"))
-                                    with cols[3]:
-                                        st.metric("成交额", info.get("amount", "—"))
-
-                                fig = service.plot_candlestick(df, stock_input.strip())
-                                st.plotly_chart(fig, use_container_width=True)
-
-                                st.markdown("### 📊 区间数据统计")
-                                latest = df.iloc[-1]
-                                period_high = df["high"].max()
-                                period_low = df["low"].min()
-                                period_avg = df["close"].mean()
-                                period_change = (
-                                    (df["close"].iloc[-1] - df["close"].iloc[0])
-                                    / df["close"].iloc[0] * 100
-                                )
-
-                                stat_cols = st.columns(5)
-                                with stat_cols[0]:
-                                    st.metric("区间最高", f"{period_high:.2f}")
-                                with stat_cols[1]:
-                                    st.metric("区间最低", f"{period_low:.2f}")
-                                with stat_cols[2]:
-                                    st.metric("区间均价", f"{period_avg:.2f}")
-                                with stat_cols[3]:
-                                    st.metric("区间涨跌幅", f"{period_change:+.2f}%")
-                                with stat_cols[4]:
-                                    st.metric("最新收盘", f"{latest['close']:.2f}")
-                            else:
-                                st.warning(f"⚠️ 未获取到 {stock_input} 的实时行情数据，请检查股票代码是否正确")
-
-                        except Exception as kline_err:
-                            st.warning(f"⚠️ 行情数据获取失败: {str(kline_err)}")
-                            st.info(
-                                "💡 提示：行情数据为辅助参考，不影响 AI 分析结果。"
-                                "A 股直接输入代码（如 600519），港股加 .HK 后缀（如 0700.HK），"
-                                "美股输入英文代码（如 AAPL）"
-                            )
-
+                            st.text(ai_result["raw_content"])
+                    return
             except Exception as e:
-                st.error(f"❌ 分析失败: {str(e)}")
+                st.error(f"❌ AI 分析失败: {str(e)}")
+                return
+
+        # ===== 保存历史 =====
+        combined_result = {**ai_result, "_scorecard": scorecard, "_market_data": market_data}
+        st.session_state.analysis_history.append({
+            "type": "stock_deep_decode",
+            "input": stock_input,
+            "result": combined_result,
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+
+        # ===== Tab 布局 =====
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 综合评分仪表盘", "📈 K线技术分析", "💰 资金流向分析", "📋 深度分析报告"])
+
+        with tab1:
+            if scorecard:
+                _render_score_dashboard(scorecard, market_data)
+            else:
+                st.warning("⚠️ 评分数据不可用，请检查市场数据是否获取成功")
+
+        with tab2:
+            _render_kline_tab(stock_input)
+
+        with tab3:
+            if market_data:
+                _render_fund_flow_tab(market_data)
+            else:
+                st.info("市场数据不可用，无法展示资金流向分析")
+
+        with tab4:
+            if ai_result and "error" not in ai_result:
+                render_stock_decode_result(ai_result)
+            else:
+                st.warning("AI 分析结果不可用")
 
     elif analyze_btn:
         st.warning("⚠️ 请输入股票名称或代码")
