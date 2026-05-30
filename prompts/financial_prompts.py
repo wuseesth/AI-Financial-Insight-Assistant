@@ -156,7 +156,7 @@ STOCK_DEEP_DECODE_PROMPT = """
 
 输出格式必须为 JSON，包含以下完整结构：
 
-{
+{{
     "part1_market_identity": {{
         "market_judgment": {{
             "market": "所属市场（A股沪市主板/深市主板/创业板/科创板/北交所/港股/美股等）",
