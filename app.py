@@ -1574,17 +1574,57 @@ def render_stock_decode_result(result: Dict[str, Any]):
         thresholds = part1.get("abnormal_thresholds", {})
         if thresholds:
             st.markdown(_pro_section("异动公告触发临界点", "", "#FF4D4D"), unsafe_allow_html=True)
+
+            # 异动触发状态指示器
+            triggered = thresholds.get("triggered", False)
+            triggered_details = thresholds.get("triggered_details", "")
+            if triggered:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.6rem 1rem;background:rgba(255,77,77,0.12);'
+                    f'border-left:4px solid #FF4D4D;border-radius:0 8px 8px 0;">'
+                    f'<div style="color:#FF4D4D;font-size:0.9rem;font-weight:700;">🚨 该股票已触发异动条件</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.85rem;margin-top:0.3rem;">{triggered_details}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.6rem 1rem;background:rgba(0,212,170,0.08);'
+                    f'border-left:4px solid #00D4AA;border-radius:0 8px 8px 0;">'
+                    f'<div style="color:#00D4AA;font-size:0.9rem;font-weight:700;">✅ 当前处于正常波动范围</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.85rem;margin-top:0.3rem;">{triggered_details if triggered_details else "该股票近期价格和成交量未触发异动公告条件，市场交易行为正常。"}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
             rule_desc = thresholds.get("rule_description", "")
             if rule_desc:
-                st.markdown(f'<div style="color:#E8E8E8;font-size:0.85rem;padding:0.5rem 1rem;">{rule_desc}</div>', unsafe_allow_html=True)
-            for key in ["a_share_mainboard", "chi_next", "other_rules"]:
-                val = thresholds.get(key, "")
+                st.markdown(f'<div style="color:#8892B0;font-size:0.8rem;padding:0.3rem 1rem;">📌 {rule_desc}</div>', unsafe_allow_html=True)
+
+            # 动态展示各市场规则（只显示与当前股票相关的）
+            market_rules = {
+                "a_share_mainboard": ("A股主板规则", thresholds.get("a_share_mainboard", "")),
+                "a_share_chi_next": ("创业板/科创板规则", thresholds.get("a_share_chi_next", "")),
+                "a_share_beijing": ("北交所规则", thresholds.get("a_share_beijing", "")),
+                "hk_stock": ("港股规则", thresholds.get("hk_stock", "")),
+                "us_stock": ("美股规则", thresholds.get("us_stock", "")),
+                "special_treatment": ("ST/*ST风险警示板规则", thresholds.get("special_treatment", "")),
+            }
+            for key, (label, val) in market_rules.items():
                 if val:
                     st.markdown(
-                        f'<div style="margin:0.3rem 1rem;padding:0.4rem 0.8rem;background:rgba(255,77,77,0.05);'
-                        f'border-radius:6px;color:#E8E8E8;font-size:0.85rem;">⚠️ {val}</div>',
+                        f'<div style="margin:0.2rem 1rem;padding:0.3rem 0.8rem;background:rgba(255,255,255,0.03);'
+                        f'border-radius:6px;color:#C0C0C0;font-size:0.8rem;">📋 {label}：{val}</div>',
                         unsafe_allow_html=True,
                     )
+
+            volume_alert = thresholds.get("volume_alert", "")
+            if volume_alert:
+                st.markdown(
+                    f'<div style="margin:0.2rem 1rem;padding:0.3rem 0.8rem;background:rgba(255,255,255,0.03);'
+                    f'border-radius:6px;color:#C0C0C0;font-size:0.8rem;">📊 {volume_alert}</div>',
+                    unsafe_allow_html=True,
+                )
 
         circ = part1.get("circulation_info", {})
         if circ:
@@ -1678,6 +1718,73 @@ def render_stock_decode_result(result: Dict[str, Any]):
     if part4:
         st.markdown("## 💣 第四部分：核心驱动力与舆情情绪拆解")
         st.markdown("---")
+
+        # ---- 板块分析（小白友好） ----
+        sector = part4.get("sector_analysis", {})
+        if sector:
+            st.markdown(_pro_section("📌 行业板块深度分析", "", "#00D4AA"), unsafe_allow_html=True)
+
+            belonging = sector.get("belonging_sector", "")
+            if belonging:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.5rem;background:rgba(0,0,0,0.15);border-radius:6px;">'
+                    f'<div style="color:#00D4AA;font-size:0.8rem;font-weight:600;">🏢 所属行业板块</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.9rem;margin-top:0.2rem;">{belonging}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            position = sector.get("sector_position", "")
+            if position:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.5rem;background:rgba(0,0,0,0.15);border-radius:6px;">'
+                    f'<div style="color:#FFC107;font-size:0.8rem;font-weight:600;">👑 板块地位</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.9rem;margin-top:0.2rem;">{position}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            perf = sector.get("sector_performance", "")
+            if perf:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.5rem;background:rgba(0,0,0,0.15);border-radius:6px;">'
+                    f'<div style="color:#00A3FF;font-size:0.8rem;font-weight:600;">📈 板块近期表现</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.9rem;margin-top:0.2rem;">{perf}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            peer = sector.get("peer_comparison", "")
+            if peer:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.5rem;background:rgba(0,0,0,0.15);border-radius:6px;">'
+                    f'<div style="color:#E040FB;font-size:0.8rem;font-weight:600;">🔍 同行对比</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.9rem;margin-top:0.2rem;">{peer}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            catalyst = sector.get("sector_catalyst", "")
+            if catalyst:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.5rem;background:rgba(0,212,170,0.08);'
+                    f'border-left:3px solid #00D4AA;border-radius:0 6px 6px 0;">'
+                    f'<div style="color:#00D4AA;font-size:0.8rem;font-weight:600;">⚡ 板块催化剂</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.9rem;margin-top:0.2rem;">{catalyst}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            risk = sector.get("sector_risk", "")
+            if risk:
+                st.markdown(
+                    f'<div style="margin:0.3rem 1rem;padding:0.5rem;background:rgba(255,77,77,0.08);'
+                    f'border-left:3px solid #FF4D4D;border-radius:0 6px 6px 0;">'
+                    f'<div style="color:#FF4D4D;font-size:0.8rem;font-weight:600;">⚠️ 板块风险提示</div>'
+                    f'<div style="color:#E8E8E8;font-size:0.9rem;margin-top:0.2rem;">{risk}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
         drivers = part4.get("driver_types", {})
         if drivers:
