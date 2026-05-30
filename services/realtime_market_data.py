@@ -16,6 +16,8 @@
 """
 
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
@@ -32,6 +34,34 @@ class RealtimeMarketDataService:
     # 美股列表（用于判断市场）
     US_STOCKS = {"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA",
                  "AMD", "BABA", "JD", "BIDU", "NFLX", "GOOG", "QQQ", "SPY"}
+
+    # ========== 内存缓存 ==========
+    _CACHE: Dict[str, Dict[str, Any]] = {}
+    _CACHE_TTL: Dict[str, float] = {}  # key -> expiry timestamp
+    _CACHE_DURATION = {
+        "quote": 10,          # 实时行情：10秒
+        "technical": 30,      # 技术指标：30秒
+        "fund_flow": 60,      # 资金流向：60秒
+        "margin": 120,        # 融资融券：2分钟
+        "north_south": 300,   # 沪深港通：5分钟
+        "sector": 300,        # 板块资金流向：5分钟
+        "hot_rank": 120,      # 热度排名：2分钟
+        "news": 120,          # 个股新闻：2分钟
+    }
+
+    @classmethod
+    def _get_cache(cls, key: str) -> Optional[Any]:
+        """获取缓存（如果未过期）"""
+        expiry = cls._CACHE_TTL.get(key, 0)
+        if time.time() < expiry and key in cls._CACHE:
+            return cls._CACHE[key]
+        return None
+
+    @classmethod
+    def _set_cache(cls, key: str, value: Any, duration: int = 60):
+        """设置缓存"""
+        cls._CACHE[key] = value
+        cls._CACHE_TTL[key] = time.time() + duration
 
     @staticmethod
     def detect_market(symbol: str) -> str:
@@ -398,58 +428,124 @@ class RealtimeMarketDataService:
             pass
         return result
 
-    @staticmethod
-    def get_comprehensive_market_data(symbol: str) -> Dict[str, Any]:
+    @classmethod
+    def get_comprehensive_market_data(cls, symbol: str) -> Dict[str, Any]:
         """
-        获取综合市场数据（聚合所有维度）
+        获取综合市场数据（聚合所有维度）- 并行化 + 缓存优化版
 
-        这是供 AI Prompt 注入使用的核心方法。
+        使用 ThreadPoolExecutor 并发请求所有接口，大幅降低等待时间。
+        对不频繁变化的数据使用内存缓存（5分钟有效期）。
         """
         data = {
             "symbol": symbol,
-            "market": RealtimeMarketDataService.detect_market(symbol),
+            "market": cls.detect_market(symbol),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
-        # 1. 实时行情
-        quote = RealtimeMarketDataService.get_realtime_quote(symbol)
-        if quote and not quote.get("error"):
-            data["quote"] = quote
+        def _fetch_quote():
+            cache_key = f"quote_{symbol}"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("quote", cached)
+            result = cls.get_realtime_quote(symbol)
+            if result and not result.get("error"):
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["quote"])
+                return ("quote", result)
+            return ("quote", None)
 
-        # 2. 技术指标汇总
-        tech = RealtimeMarketDataService.get_technical_summary(symbol)
-        if tech and not tech.get("error"):
-            data["technical"] = tech
+        def _fetch_technical():
+            cache_key = f"technical_{symbol}"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("technical", cached)
+            result = cls.get_technical_summary(symbol)
+            if result and not result.get("error"):
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["technical"])
+                return ("technical", result)
+            return ("technical", None)
 
-        # 3. 资金流向
-        fund = RealtimeMarketDataService.get_fund_flow(symbol)
-        if fund and not fund.get("error"):
-            data["fund_flow"] = fund
+        def _fetch_fund_flow():
+            cache_key = f"fund_flow_{symbol}"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("fund_flow", cached)
+            result = cls.get_fund_flow(symbol)
+            if result and not result.get("error"):
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["fund_flow"])
+                return ("fund_flow", result)
+            return ("fund_flow", None)
 
-        # 4. 融资融券（仅 A 股）
-        margin = RealtimeMarketDataService.get_margin_data(symbol)
-        if margin and not margin.get("error"):
-            data["margin"] = margin
+        def _fetch_margin():
+            cache_key = f"margin_{symbol}"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("margin", cached)
+            result = cls.get_margin_data(symbol)
+            if result and not result.get("error"):
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["margin"])
+                return ("margin", result)
+            return ("margin", None)
 
-        # 5. 沪深港通
-        hsgt = RealtimeMarketDataService.get_north_south_flow()
-        if hsgt and not hsgt.get("error"):
-            data["north_south_flow"] = hsgt
+        def _fetch_north_south():
+            cache_key = "north_south"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("north_south_flow", cached)
+            result = cls.get_north_south_flow()
+            if result and not result.get("error"):
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["north_south"])
+                return ("north_south_flow", result)
+            return ("north_south_flow", None)
 
-        # 6. 板块资金流向
-        sector = RealtimeMarketDataService.get_sector_fund_flow()
-        if sector:
-            data["sector_flow"] = sector
+        def _fetch_sector():
+            cache_key = "sector_flow"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("sector_flow", cached)
+            result = cls.get_sector_fund_flow()
+            if result:
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["sector"])
+                return ("sector_flow", result)
+            return ("sector_flow", None)
 
-        # 7. 热度排名
-        hot = RealtimeMarketDataService.get_hot_rank()
-        if hot:
-            data["hot_rank"] = hot
+        def _fetch_hot_rank():
+            cache_key = "hot_rank"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("hot_rank", cached)
+            result = cls.get_hot_rank()
+            if result:
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["hot_rank"])
+                return ("hot_rank", result)
+            return ("hot_rank", None)
 
-        # 8. 个股新闻
-        news = RealtimeMarketDataService.get_stock_news(symbol)
-        if news:
-            data["news"] = news
+        def _fetch_news():
+            cache_key = f"news_{symbol}"
+            cached = cls._get_cache(cache_key)
+            if cached:
+                return ("news", cached)
+            result = cls.get_stock_news(symbol)
+            if result:
+                cls._set_cache(cache_key, result, cls._CACHE_DURATION["news"])
+                return ("news", result)
+            return ("news", None)
+
+        # 并行执行所有数据获取任务
+        tasks = [
+            _fetch_quote, _fetch_technical, _fetch_fund_flow,
+            _fetch_margin, _fetch_north_south, _fetch_sector,
+            _fetch_hot_rank, _fetch_news,
+        ]
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_name = {executor.submit(task): task for task in tasks}
+            for future in as_completed(future_to_name, timeout=30):
+                try:
+                    key, value = future.result(timeout=10)
+                    if value is not None:
+                        data[key] = value
+                except Exception:
+                    pass  # 单个接口失败不影响整体
 
         return data
 
