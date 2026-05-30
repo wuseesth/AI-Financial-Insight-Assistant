@@ -2667,15 +2667,22 @@ def render_stock_decode_page():
             except Exception as e:
                 realtime_data_text = f"【实时数据获取失败: {str(e)}，AI 将基于训练知识进行分析】"
 
-        # ===== 第二步：评分引擎计算（基于真实数据，不依赖 AI） =====
+        # ===== 第二步：检查数据是否有效 =====
+        has_valid_data = bool(
+            market_data.get("quote", {}).get("price")
+            or market_data.get("technical", {}).get("ma5")
+            or market_data.get("fund_flow", {}).get("main_net_inflow")
+        )
+
+        # ===== 第三步：评分引擎计算（基于真实数据，不依赖 AI） =====
         scorecard = {}
-        if market_data:
+        if has_valid_data:
             try:
                 scorecard = ScoringEngine.calculate_all_scores(market_data)
             except Exception as e:
                 st.warning(f"⚠️ 评分引擎计算异常: {str(e)}")
 
-        # ===== 第三步：AI 深度分析 =====
+        # ===== 第四步：AI 深度分析 =====
         ai_result = {}
         with st.spinner("🔄 AI 正在基于实时数据进行深度分析，请稍候..."):
             try:
