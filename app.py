@@ -2369,6 +2369,12 @@ def _render_score_dashboard(scorecard: Dict[str, Any], market_data: Dict[str, An
     rating_summary = scorecard.get("rating_summary", "")
     key_risks = scorecard.get("key_risks", [])
     key_catalysts = scorecard.get("key_catalysts", [])
+    data_insufficient = scorecard.get("data_insufficient", False)
+    data_insufficient_msg = scorecard.get("data_insufficient_message", "")
+
+    # 数据不足警告
+    if data_insufficient:
+        st.warning(data_insufficient_msg)
 
     # 顶部：仪表盘 + 评级
     col_gauge, col_rating = st.columns([1, 1])

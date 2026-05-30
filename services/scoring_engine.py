@@ -80,15 +80,51 @@ class ScoringEngine:
             "liquidity": liquidity_score,
         }
 
+        # ===== 数据完整性检测 =====
+        quote = market_data.get("quote", {})
+        tech = market_data.get("technical", {})
+        fund = market_data.get("fund_flow", {})
+
+        has_real_data = bool(
+            quote.get("price") or quote.get("name")
+            or tech.get("ma5") or tech.get("ma_status")
+            or fund.get("main_net_inflow")
+        )
+
+        # 统计有多少维度拿到了真实数据
+        real_data_dimensions = 0
+        if quote.get("market_cap") or tech.get("market_cap"):
+            real_data_dimensions += 1
+        if tech.get("ma_status") or tech.get("indicators", {}).get("macd"):
+            real_data_dimensions += 1
+        if quote.get("pe"):
+            real_data_dimensions += 1
+        if fund.get("main_net_inflow"):
+            real_data_dimensions += 1
+        if tech.get("volatility_20d"):
+            real_data_dimensions += 1
+        if quote.get("turnover"):
+            real_data_dimensions += 1
+
         overall_score = cls.calculate_overall(scores_dict, market_data)
 
         # 获取评级
         rating = cls.get_rating(overall_score)
 
+        # 数据不足标记
+        data_insufficient = not has_real_data or real_data_dimensions <= 1
+
         # 构建完整评分卡
         scorecard = {
             "overall_rating": rating["rating"],
             "overall_score": overall_score,
+            "data_insufficient": data_insufficient,
+            "data_insufficient_message": (
+                "⚠️ 数据不足：无法获取该股票的有效实时市场数据，"
+                "当前评分基于默认值，不具备参考价值。"
+                "请检查股票代码是否正确（A股使用6位数字代码，如 600519；"
+                "港股使用 0700.HK 格式；美股使用字母代码如 AAPL）。"
+            ) if data_insufficient else "",
             "rating_scale": cls.RATING_SCALE,
             "scoring_summary": (
                 f"综合评分基于六维加权平均模型。"

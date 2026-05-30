@@ -69,7 +69,8 @@ class RealtimeMarketDataService:
         s = symbol.strip().upper()
         if s.endswith(".HK"):
             return "hk"
-        if s in RealtimeMarketDataService.US_STOCKS or s.isalpha():
+        # 美股判断：必须是纯英文字母且长度<=5（美股代码特征），且不能包含中文字符
+        if s in RealtimeMarketDataService.US_STOCKS or (s.isascii() and s.isalpha() and len(s) <= 5):
             return "us"
         return "a"
 
