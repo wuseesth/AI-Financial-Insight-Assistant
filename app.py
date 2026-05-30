@@ -2657,32 +2657,86 @@ def render_stock_decode_page():
         analyze_btn = st.button("🔍 深度解码", type="primary", use_container_width=True)
 
     if analyze_btn and stock_input:
-        # ===== 第一步：获取实时市场数据 =====
+        stock_input_clean = stock_input.strip()
+
+        # ===== 第〇步：检测交易时段 =====
+        detected_market = RealtimeMarketDataService.detect_market(stock_input_clean)
+        market_status = RealtimeMarketDataService.is_market_open(detected_market)
+        is_open = market_status["is_open"]
+
+        # 显示市场状态横幅
+        status_color = "#00D4AA" if is_open else "#FFC107"
+        st.markdown(
+            f'<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:0.5rem 1rem;'
+            f'margin-bottom:0.5rem;border-left:3px solid {status_color};">'
+            f'<span style="color:{status_color};">{market_status["status_text"]}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ===== 第一步：获取实时市场数据（带超时控制） =====
         market_data = {}
         realtime_data_text = ""
+        data_error_msg = ""
+        is_fallback = False
+        fallback_msg = ""
+
         with st.spinner("📡 正在获取实时市场数据..."):
             try:
-                market_data = RealtimeMarketDataService.get_comprehensive_market_data(stock_input.strip())
+                market_data = RealtimeMarketDataService.get_comprehensive_market_data(stock_input_clean)
                 realtime_data_text = RealtimeMarketDataService.format_market_data_for_prompt(market_data)
+                quote_err = market_data.get("quote", {}).get("error", "")
+                if quote_err:
+                    data_error_msg = f"行情接口: {quote_err}"
             except Exception as e:
-                realtime_data_text = f"【实时数据获取失败: {str(e)}，AI 将基于训练知识进行分析】"
+                err_str = str(e)
+                if "SSL" in err_str or "DECRYPTION" in err_str:
+                    data_error_msg = "数据源（东方财富）SSL 连接异常，可能是网络环境问题"
+                else:
+                    data_error_msg = f"数据获取异常: {err_str}"
 
-        # ===== 第二步：检查数据是否有效 =====
+        # ===== 第二步：检查数据是否有效，无效则自动降级到历史数据 =====
         has_valid_data = bool(
             market_data.get("quote", {}).get("price")
             or market_data.get("technical", {}).get("ma5")
             or market_data.get("fund_flow", {}).get("main_net_inflow")
         )
 
+        if not has_valid_data:
+            # 自动降级：用历史K线数据生成兜底数据
+            with st.spinner("📊 实时数据不可用，正在基于历史K线数据生成分析..."):
+                fallback_data = RealtimeMarketDataService.generate_fallback_from_history(stock_input_clean)
+                if fallback_data.get("quote") and fallback_data.get("technical"):
+                    # 合并兜底数据到 market_data（保留已有的任何数据）
+                    if not market_data.get("quote"):
+                        market_data["quote"] = fallback_data["quote"]
+                    if not market_data.get("technical"):
+                        market_data["technical"] = fallback_data["technical"]
+                    market_data["_fallback"] = True
+                    is_fallback = True
+                    fallback_msg = fallback_data.get("_fallback_message", "使用历史K线数据替代实时数据")
+                    # 重新生成 prompt 文本
+                    realtime_data_text = RealtimeMarketDataService.format_market_data_for_prompt(market_data)
+                    has_valid_data = True
+                    data_error_msg = ""  # 清除之前的错误信息
+                else:
+                    fallback_err = fallback_data.get("_fallback_error", "无法获取历史数据")
+                    if not data_error_msg:
+                        data_error_msg = f"实时数据和历史数据均获取失败: {fallback_err}"
+
         # ===== 第三步：评分引擎计算（基于真实数据，不依赖 AI） =====
         scorecard = {}
         if has_valid_data:
             try:
                 scorecard = ScoringEngine.calculate_all_scores(market_data)
+                # 如果是兜底数据，在评分卡中标记
+                if is_fallback:
+                    scorecard["_fallback"] = True
+                    scorecard["_fallback_message"] = fallback_msg
             except Exception as e:
                 st.warning(f"⚠️ 评分引擎计算异常: {str(e)}")
 
-        # ===== 第四步：AI 深度分析 =====
+        # ===== 第四步：AI 深度分析（使用流式加载，先显示评分和K线） =====
         ai_result = {}
         with st.spinner("🔄 AI 正在基于实时数据进行深度分析，请稍候..."):
             try:
@@ -2704,10 +2758,9 @@ def render_stock_decode_page():
                     if "raw_content" in ai_result:
                         with st.expander("查看原始返回内容"):
                             st.text(ai_result["raw_content"])
-                    return
+                    # AI 失败不阻断，继续显示评分和K线
             except Exception as e:
-                st.error(f"❌ AI 分析失败: {str(e)}")
-                return
+                st.warning(f"⚠️ AI 分析异常: {str(e)}，评分和K线分析仍可用")
 
         # ===== 保存历史 =====
         combined_result = {**ai_result, "_scorecard": scorecard, "_market_data": market_data}
@@ -2722,17 +2775,23 @@ def render_stock_decode_page():
         tab1, tab2, tab3, tab4 = st.tabs(["📊 综合评分仪表盘", "📈 K线技术分析", "💰 资金流向分析", "📋 深度分析报告"])
 
         with tab1:
+            if data_error_msg and not is_fallback:
+                st.error(f"❌ {data_error_msg}")
+            if is_fallback:
+                st.info(f"ℹ️ {fallback_msg}")
             if scorecard:
                 _render_score_dashboard(scorecard, market_data)
-            else:
+            elif not data_error_msg:
                 st.warning("⚠️ 评分数据不可用，请检查市场数据是否获取成功")
 
         with tab2:
             _render_kline_tab(stock_input)
 
         with tab3:
-            if market_data:
+            if market_data and not is_fallback:
                 _render_fund_flow_tab(market_data)
+            elif is_fallback:
+                st.info("ℹ️ 当前使用历史K线数据，资金流向数据仅在实时数据可用时展示")
             else:
                 st.info("市场数据不可用，无法展示资金流向分析")
 

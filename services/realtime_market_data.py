@@ -49,6 +49,205 @@ class RealtimeMarketDataService:
         "news": 120,          # 个股新闻：2分钟
     }
 
+    # ========== 交易时段定义 ==========
+    # A股：周一至周五 9:30-11:30, 13:00-15:00
+    # 港股：周一至周五 9:30-12:00, 13:00-16:00
+    # 美股：周一至周五 9:30-16:00 ET (夏令时 21:30-04:00, 冬令时 22:30-05:00 北京时间)
+    MARKET_HOURS = {
+        "a": {
+            "name": "A股",
+            "sessions": [
+                ("09:30", "11:30"),
+                ("13:00", "15:00"),
+            ],
+            "timezone": "Asia/Shanghai",
+        },
+        "hk": {
+            "name": "港股",
+            "sessions": [
+                ("09:30", "12:00"),
+                ("13:00", "16:00"),
+            ],
+            "timezone": "Asia/Shanghai",
+        },
+        "us": {
+            "name": "美股",
+            "sessions": [
+                ("09:30", "16:00"),  # ET 时间
+            ],
+            "timezone": "US/Eastern",
+        },
+    }
+
+    @staticmethod
+    def is_market_open(market: str = "a") -> Dict[str, Any]:
+        """
+        判断指定市场当前是否在交易时段
+
+        Returns:
+            {"is_open": bool, "next_open": str, "next_close": str, "status_text": str}
+        """
+        now = datetime.now()
+        weekday = now.weekday()  # 0=周一, 6=周日
+
+        # 周末休市
+        if weekday >= 5:
+            next_monday = now + timedelta(days=(7 - weekday))
+            next_open_str = next_monday.strftime("%Y-%m-%d") + " 09:30"
+            return {
+                "is_open": False,
+                "next_open": next_open_str,
+                "next_close": "",
+                "status_text": f"📅 今天是周末（{'周六' if weekday == 5 else '周日'}），{RealtimeMarketDataService.MARKET_HOURS.get(market, {}).get('name', '该市场')}休市。下一交易日：{next_open_str}",
+            }
+
+        market_info = RealtimeMarketDataService.MARKET_HOURS.get(market, RealtimeMarketDataService.MARKET_HOURS["a"])
+        current_time_str = now.strftime("%H:%M")
+
+        for session_start, session_end in market_info["sessions"]:
+            if session_start <= current_time_str <= session_end:
+                return {
+                    "is_open": True,
+                    "next_open": "",
+                    "next_close": session_end,
+                    "status_text": f"🟢 {market_info['name']}交易中（{session_start}-{session_end}）",
+                }
+
+        # 非交易时段：找出下一个开盘时间
+        # 先找今天是否还有未开始的交易时段
+        for session_start, session_end in market_info["sessions"]:
+            if current_time_str < session_start:
+                return {
+                    "is_open": False,
+                    "next_open": f"{now.strftime('%Y-%m-%d')} {session_start}",
+                    "next_close": session_end,
+                    "status_text": f"⏸️ {market_info['name']}已休市（今日交易时段：{market_info['sessions'][0][0]}-{market_info['sessions'][-1][1]}），下一交易时段：{session_start}",
+                }
+
+        # 今天所有交易时段已过，下一交易日
+        next_day = now + timedelta(days=1)
+        # 如果明天是周末，跳到周一
+        while next_day.weekday() >= 5:
+            next_day += timedelta(days=1)
+        next_open_str = f"{next_day.strftime('%Y-%m-%d')} {market_info['sessions'][0][0]}"
+        return {
+            "is_open": False,
+            "next_open": next_open_str,
+            "next_close": market_info['sessions'][0][1],
+            "status_text": f"⏸️ {market_info['name']}今日已收盘。下一交易日：{next_open_str}",
+        }
+
+    @staticmethod
+    def generate_fallback_from_history(symbol: str) -> Dict[str, Any]:
+        """
+        当实时数据获取失败时，基于历史K线数据生成兜底评分数据
+
+        从历史行情中提取：
+        - 最新价格、涨跌幅
+        - 均线系统（MA5/10/20/60）
+        - 技术指标（MACD/RSI/KDJ）
+        - 波动率
+        - 成交量/换手率估算
+
+        Returns:
+            与 get_comprehensive_market_data 兼容的数据字典
+        """
+        data = {
+            "symbol": symbol,
+            "market": RealtimeMarketDataService.detect_market(symbol),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "_fallback": True,  # 标记为兜底数据
+            "_fallback_message": "⚠️ 实时数据获取失败，已自动降级使用历史K线数据进行分析。评分基于历史技术指标，不包含实时行情和资金流向。",
+        }
+
+        try:
+            service = MarketDataService()
+            df = service.get_stock_history(symbol=symbol, period="1y")
+            if df is None or df.empty:
+                data["_fallback_error"] = "无法获取历史K线数据"
+                return data
+
+            # 计算技术指标
+            indicators_df = TechnicalIndicators.calc_all_indicators(df)
+            latest_indicators = TechnicalIndicators.get_latest_indicators(indicators_df)
+            signal = TechnicalIndicators.get_market_signal(indicators_df)
+
+            # 从历史数据构建 quote 数据
+            last_row = df.iloc[-1]
+            close_series = df["close"]
+            volume_series = df["volume"]
+
+            # 估算换手率（如果没有换手率列，用成交量/流通股本估算）
+            turnover_est = None
+            if "turnover" in df.columns:
+                turnover_est = float(last_row.get("turnover", 0))
+            elif "amount" in df.columns and "close" in df.columns:
+                # 粗略估算：成交额/（收盘价*流通股本），这里用成交量代替
+                pass
+
+            # 构建 quote 子集
+            quote = {
+                "name": symbol,
+                "price": float(last_row.get("close", 0)),
+                "change": float(last_row.get("change", last_row.get("close", 0) - df.iloc[-2].get("close", 0) if len(df) > 1 else 0)),
+                "pct_change": float(last_row.get("pct_change", 0)),
+                "volume": float(last_row.get("volume", 0)),
+                "amount": float(last_row.get("amount", 0)),
+                "turnover": turnover_est,
+                "high": float(last_row.get("high", 0)),
+                "low": float(last_row.get("low", 0)),
+                "open": float(last_row.get("open", 0)),
+                "pre_close": float(df.iloc[-2].get("close", 0)) if len(df) > 1 else float(last_row.get("close", 0)),
+                "market": RealtimeMarketDataService.detect_market(symbol),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "_from_history": True,
+            }
+
+            # 构建 technical 子集
+            technical = {
+                "latest_price": float(last_row["close"]),
+                "ma5": float(close_series.rolling(5).mean().iloc[-1]) if len(df) >= 5 else None,
+                "ma10": float(close_series.rolling(10).mean().iloc[-1]) if len(df) >= 10 else None,
+                "ma20": float(close_series.rolling(20).mean().iloc[-1]) if len(df) >= 20 else None,
+                "ma60": float(close_series.rolling(60).mean().iloc[-1]) if len(df) >= 60 else None,
+                "ma120": float(close_series.rolling(120).mean().iloc[-1]) if len(df) >= 120 else None,
+                "volume_ma5": float(volume_series.rolling(5).mean().iloc[-1]) if len(df) >= 5 else None,
+                "volume_ma20": float(volume_series.rolling(20).mean().iloc[-1]) if len(df) >= 20 else None,
+                "latest_volume": float(last_row["volume"]),
+                "high_52w": float(df["high"].max()),
+                "low_52w": float(df["low"].min()),
+                "pct_change_1d": float(close_series.pct_change().iloc[-1] * 100) if len(df) > 1 else 0,
+                "pct_change_5d": float((close_series.iloc[-1] / close_series.iloc[-5] - 1) * 100) if len(df) >= 5 else 0,
+                "pct_change_20d": float((close_series.iloc[-1] / close_series.iloc[-20] - 1) * 100) if len(df) >= 20 else 0,
+                "volatility_20d": float(close_series.pct_change().rolling(20).std().iloc[-1] * 100) if len(df) >= 20 else 0,
+                "signal": signal,
+                "indicators": latest_indicators,
+                "_from_history": True,
+            }
+
+            # 判断均线排列
+            ma5 = technical["ma5"]
+            ma10 = technical["ma10"]
+            ma20 = technical["ma20"]
+            ma60 = technical["ma60"]
+            if all(v is not None for v in [ma5, ma10, ma20, ma60]):
+                if ma5 > ma10 > ma20 > ma60:
+                    technical["ma_status"] = "多头排列"
+                elif ma5 < ma10 < ma20 < ma60:
+                    technical["ma_status"] = "空头排列"
+                else:
+                    technical["ma_status"] = "缠绕震荡"
+            else:
+                technical["ma_status"] = "数据不足"
+
+            data["quote"] = quote
+            data["technical"] = technical
+
+        except Exception as e:
+            data["_fallback_error"] = str(e)
+
+        return data
+
     @classmethod
     def _get_cache(cls, key: str) -> Optional[Any]:
         """获取缓存（如果未过期）"""
