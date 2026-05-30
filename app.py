@@ -2428,44 +2428,209 @@ def _render_fund_flow_chart(market_data: Dict[str, Any]) -> Optional[go.Figure]:
     return fig
 
 
+# ---- 报价面板辅助格式化函数 ----
+def _fmt_volume(v):
+    """格式化成交量：股→万手/亿手"""
+    if v in (None, "N/A", "", 0):
+        return "N/A"
+    try:
+        v = float(v)
+        if v >= 1e8:
+            return f"{v/1e8:.2f}亿"
+        elif v >= 1e4:
+            return f"{v/1e4:.2f}万"
+        else:
+            return f"{v:.0f}"
+    except (ValueError, TypeError):
+        return str(v)
+
+def _fmt_amount(v):
+    """格式化成交额：元→万/亿"""
+    if v in (None, "N/A", "", 0):
+        return "N/A"
+    try:
+        v = float(v)
+        if v >= 1e8:
+            return f"{v/1e8:.2f}亿"
+        elif v >= 1e4:
+            return f"{v/1e4:.2f}万"
+        else:
+            return f"{v:.0f}"
+    except (ValueError, TypeError):
+        return str(v)
+
+def _fmt_pct(v):
+    """格式化百分比"""
+    if v in (None, "N/A", "", 0):
+        return "N/A"
+    try:
+        return f"{float(v):.2f}%"
+    except (ValueError, TypeError):
+        return str(v)
+
+def _fmt_market_cap(v):
+    """格式化市值"""
+    if v in (None, "N/A", "", 0):
+        return "N/A"
+    try:
+        v = float(v)
+        if v >= 1e12:
+            return f"{v/1e12:.2f}万亿"
+        elif v >= 1e8:
+            return f"{v/1e8:.2f}亿"
+        elif v >= 1e4:
+            return f"{v/1e4:.2f}万"
+        else:
+            return f"{v:.0f}"
+    except (ValueError, TypeError):
+        return str(v)
+
+
 def _render_realtime_quote_panel(market_data: Dict[str, Any], stock_input: str):
-    """渲染实时报价面板"""
+    """渲染 Investing.com 风格的实时报价面板"""
     quote = market_data.get("quote", {})
     tech = market_data.get("technical", {})
+    is_fallback = market_data.get("_fallback", False)
+    quote_source = quote.get("_source", "unknown")
 
-    # 主要指标
-    st.markdown("### 💹 实时行情")
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    with col1:
-        price = quote.get("current", quote.get("price", "N/A"))
-        change = quote.get("change", quote.get("change_pct", ""))
-        change_str = str(change)
-        is_up = "+" in change_str or (change_str not in ["N/A", "", "0"] and float(change_str.replace("%", "")) > 0) if change_str.replace("%", "").replace(".", "").replace("-", "").isdigit() else False
-        st.metric("最新价", price, change)
-    with col2:
-        st.metric("开盘", quote.get("open", "N/A"))
-    with col3:
-        st.metric("最高", quote.get("high", "N/A"))
-    with col4:
-        st.metric("最低", quote.get("low", "N/A"))
-    with col5:
-        st.metric("昨收", quote.get("pre_close", quote.get("close", "N/A")))
-    with col6:
-        st.metric("成交量", quote.get("volume", "N/A"))
+    # 判断数据来源
+    if is_fallback:
+        source_label = "📜 历史K线数据"
+        source_color = "#FFA726"
+    elif quote_source == "sina_finance":
+        source_label = "📡 新浪财经实时行情"
+        source_color = "#66BB6A"
+    elif quote_source == "akshare":
+        source_label = "📡 东方财富实时行情"
+        source_color = "#42A5F5"
+    else:
+        source_label = "⚠️ 数据不可用"
+        source_color = "#EF5350"
 
-    # 扩展指标
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("成交额", quote.get("amount", tech.get("amount", "N/A")))
-    with col2:
-        turnover = quote.get("turnover_rate", tech.get("turnover", "N/A"))
-        st.metric("换手率", turnover)
-    with col3:
-        pe = quote.get("pe", tech.get("pe", "N/A"))
-        st.metric("市盈率(PE)", pe)
-    with col4:
-        mcap = quote.get("market_cap", tech.get("market_cap", "N/A"))
-        st.metric("总市值", mcap)
+    # 获取价格数据
+    price = quote.get("price", tech.get("latest_price", "N/A"))
+    change = quote.get("change", 0)
+    pct_change = quote.get("pct_change", tech.get("pct_change_1d", 0))
+    name = quote.get("name", stock_input)
+
+    # 判断涨跌方向
+    try:
+        change_f = float(change) if change not in (None, "N/A", "") else 0
+        pct_f = float(pct_change) if pct_change not in (None, "N/A", "") else 0
+    except (ValueError, TypeError):
+        change_f = 0
+        pct_f = 0
+
+    is_up = change_f > 0
+    is_down = change_f < 0
+    arrow = "▲" if is_up else ("▼" if is_down else "—")
+    color = "#EF5350" if is_up else ("#26A69A" if is_down else "#B0BEC5")  # A股红涨绿跌
+
+    # ---- Investing.com 风格报价面板 ----
+    panel_html = f"""
+    <div style="
+        background: linear-gradient(135deg, #1A1D28 0%, #222638 100%);
+        border: 1px solid #2A2D3A;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
+        font-family: 'Segoe UI', -apple-system, sans-serif;
+    ">
+        <!-- 头部：股票名称 + 数据来源 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+                <span style="font-size: 20px; font-weight: 700; color: #E8EAF6;">{name}</span>
+                <span style="font-size: 13px; color: #78909C; margin-left: 10px;">{stock_input}</span>
+            </div>
+            <span style="
+                font-size: 11px; font-weight: 600;
+                color: {source_color};
+                background: {source_color}18;
+                border: 1px solid {source_color}40;
+                border-radius: 6px;
+                padding: 4px 10px;
+            ">{source_label}</span>
+        </div>
+
+        <!-- 价格行 -->
+        <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 12px;">
+            <span style="font-size: 42px; font-weight: 700; color: #FFFFFF; letter-spacing: -1px;">
+                {price if price != "N/A" else "—"}
+            </span>
+            <span style="
+                font-size: 22px; font-weight: 600;
+                color: {color};
+                background: {color}18;
+                border-radius: 8px;
+                padding: 2px 14px;
+            ">
+                {arrow} {abs(change_f):.3f} ({abs(pct_f):.2f}%)
+            </span>
+        </div>
+
+        <!-- 详细数据网格 -->
+        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 16px;">
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">今开</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{quote.get('open', tech.get('latest_price', 'N/A'))}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">最高</div>
+                <div style="font-size: 16px; font-weight: 600; color: #EF5350;">{quote.get('high', tech.get('high_52w', 'N/A'))}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">最低</div>
+                <div style="font-size: 16px; font-weight: 600; color: #26A69A;">{quote.get('low', tech.get('low_52w', 'N/A'))}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">昨收</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{quote.get('pre_close', 'N/A')}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">成交量</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{_fmt_volume(quote.get('volume', tech.get('latest_volume', 'N/A')))}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">成交额</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{_fmt_amount(quote.get('amount', 'N/A'))}</div>
+            </div>
+        </div>
+
+        <!-- 第二行指标 -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 8px;">
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">换手率</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{_fmt_pct(quote.get('turnover', tech.get('turnover', 'N/A')))}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">市盈率(PE)</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{quote.get('pe', 'N/A')}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">总市值</div>
+                <div style="font-size: 16px; font-weight: 600; color: #E8EAF6;">{_fmt_market_cap(quote.get('market_cap', 'N/A'))}</div>
+            </div>
+            <div style="background: #131722; border-radius: 8px; padding: 10px 12px;">
+                <div style="font-size: 11px; color: #78909C; margin-bottom: 4px;">数据时间</div>
+                <div style="font-size: 14px; font-weight: 600; color: #B0BEC5;">{market_data.get('timestamp', 'N/A')}</div>
+            </div>
+        </div>
+
+        <!-- 数据来源说明 -->
+        <div style="
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #FFA72610;
+            border-left: 3px solid {source_color};
+            border-radius: 4px;
+            font-size: 12px;
+            color: #B0BEC5;
+        ">
+            {"⚠️ 当前为非交易时段或实时数据不可用，以下价格基于历史K线最新收盘价，非实时行情。" if is_fallback else "✅ 数据来源: " + source_label + " | 数据延迟约15秒"}
+        </div>
+    </div>
+    """
+    st.markdown(panel_html, unsafe_allow_html=True)
 
 
 def _render_score_dashboard(scorecard: Dict[str, Any], market_data: Dict[str, Any]):

@@ -1,7 +1,7 @@
 """
 实时市场数据聚合服务
 ====================
-基于 AKShare 免费接口，聚合多维度实时市场数据。
+基于 AKShare + 新浪财经备用接口，聚合多维度实时市场数据。
 为 AI 分析提供真实的量化数据支撑，替代模型知识猜测。
 
 支持的数据维度：
@@ -13,10 +13,17 @@
 6. 板块资金流向
 7. 实时新闻舆情
 8. 技术指标（复用 TechnicalIndicators）
+
+数据源说明：
+- 主数据源：AKShare（东方财富接口）
+- 备用数据源：新浪财经 API（纯 HTTP，无 SSL 问题）
+- 兜底方案：历史 K 线数据（当所有实时接口都失败时）
 """
 
 import json
 import time
+import re
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
@@ -274,14 +281,117 @@ class RealtimeMarketDataService:
         return "a"
 
     @staticmethod
+    def _fetch_sina_quote(symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        备用方案：通过新浪财经 API 获取实时行情（纯 HTTP，无 SSL 问题）
+
+        新浪接口格式（A股）：
+        var hq_str_sh600513="联环药业,16.880,16.880,16.890,17.100,16.700,16.890,16.900,...
+        字段顺序：名称,今开,昨收,当前价,最高,最低,买入价,卖出价,成交量,成交额,...
+        """
+        try:
+            market = RealtimeMarketDataService.detect_market(symbol)
+            sina_symbol = symbol.replace(".HK", "").replace(".", "")
+
+            # 新浪前缀规则
+            if market == "a":
+                # A 股：sh=上海, sz=深圳, bj=北京
+                if symbol.startswith("6"):
+                    sina_code = f"sh{sina_symbol}"
+                elif symbol.startswith("0") or symbol.startswith("3"):
+                    sina_code = f"sz{sina_symbol}"
+                elif symbol.startswith("8") or symbol.startswith("4"):
+                    sina_code = f"bj{sina_symbol}"
+                else:
+                    sina_code = f"sh{sina_symbol}"
+            elif market == "hk":
+                sina_code = f"hk{sina_symbol}"
+            elif market == "us":
+                # 美股用新浪的 gp 前缀
+                sina_code = f"gb_{sina_symbol}"
+            else:
+                return None
+
+            url = f"https://hq.sinajs.cn/list={sina_code}"
+            headers = {
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            resp = requests.get(url, headers=headers, timeout=10, verify=False)
+            resp.encoding = "gbk"
+
+            if not resp.text or "hq_str" not in resp.text:
+                return None
+
+            # 解析新浪返回数据
+            text = resp.text.strip()
+            # 格式: var hq_str_sh600513="名称,今开,昨收,当前价,最高,最低,...";
+            match = re.search(r'"([^"]+)"', text)
+            if not match:
+                return None
+
+            parts = match.group(1).split(",")
+            if len(parts) < 30:
+                return None
+
+            # 新浪 A 股字段索引
+            name = parts[0]
+            open_price = float(parts[1]) if parts[1] else 0
+            pre_close = float(parts[2]) if parts[2] else 0
+            price = float(parts[3]) if parts[3] else 0
+            high = float(parts[4]) if parts[4] else 0
+            low = float(parts[5]) if parts[5] else 0
+            volume = float(parts[8]) if parts[8] else 0  # 手
+            amount = float(parts[9]) if parts[9] else 0   # 万
+            # 成交量转股（A股1手=100股）
+            volume_shares = volume * 100
+            # 成交额转元
+            amount_yuan = amount * 10000
+
+            change = price - pre_close
+            pct_change = (change / pre_close * 100) if pre_close != 0 else 0
+
+            # 换手率新浪不直接提供，用成交额估算
+            turnover = None
+
+            result = {
+                "name": name,
+                "price": price,
+                "change": round(change, 3),
+                "pct_change": round(pct_change, 2),
+                "volume": volume_shares,
+                "amount": amount_yuan,
+                "turnover": turnover,
+                "high": high,
+                "low": low,
+                "open": open_price,
+                "pre_close": pre_close,
+                "market": "A股" if market == "a" else ("港股" if market == "hk" else "美股"),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "_source": "sina_finance",
+            }
+            return result
+
+        except Exception as e:
+            return None
+
+    @staticmethod
     def get_realtime_quote(symbol: str) -> Dict[str, Any]:
         """
         获取实时行情快照
+
+        数据源优先级：
+        1. AKShare（东方财富接口）- 主数据源
+        2. 新浪财经 API（纯 HTTP）- 备用数据源
+        3. 历史 K 线数据 - 最终兜底
 
         返回：
             price, change, pct_change, volume, amount, turnover, high, low, open, pre_close
         """
         result = {"symbol": symbol, "error": None}
+        akshare_error = None
+
+        # ---- 方案1: AKShare 主数据源 ----
         try:
             import akshare as ak
             market = RealtimeMarketDataService.detect_market(symbol)
@@ -295,28 +405,29 @@ class RealtimeMarketDataService:
                     # 尝试去掉前导0
                     match = df[df["代码"] == code.lstrip("0")]
                 if match.empty:
-                    result["error"] = f"未找到 {symbol} 的实时行情"
+                    akshare_error = f"未找到 {symbol} 的实时行情"
+                else:
+                    row = match.iloc[0]
+                    result.update({
+                        "name": row.get("名称", ""),
+                        "price": float(row.get("最新价", 0)),
+                        "change": float(row.get("涨跌额", 0)),
+                        "pct_change": float(row.get("涨跌幅", 0)),
+                        "volume": float(row.get("成交量", 0)),
+                        "amount": float(row.get("成交额", 0)),
+                        "turnover": float(row.get("换手率", 0)),
+                        "high": float(row.get("最高", 0)),
+                        "low": float(row.get("最低", 0)),
+                        "open": float(row.get("开盘", 0)),
+                        "pre_close": float(row.get("昨收", 0)),
+                        "pe": float(row.get("市盈率-动态", 0)) if row.get("市盈率-动态") else None,
+                        "market_cap": float(row.get("总市值", 0)),
+                        "circulating_cap": float(row.get("流通市值", 0)),
+                        "market": "A股",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "_source": "akshare",
+                    })
                     return result
-
-                row = match.iloc[0]
-                result.update({
-                    "name": row.get("名称", ""),
-                    "price": float(row.get("最新价", 0)),
-                    "change": float(row.get("涨跌额", 0)),
-                    "pct_change": float(row.get("涨跌幅", 0)),
-                    "volume": float(row.get("成交量", 0)),
-                    "amount": float(row.get("成交额", 0)),
-                    "turnover": float(row.get("换手率", 0)),
-                    "high": float(row.get("最高", 0)),
-                    "low": float(row.get("最低", 0)),
-                    "open": float(row.get("开盘", 0)),
-                    "pre_close": float(row.get("昨收", 0)),
-                    "pe": float(row.get("市盈率-动态", 0)) if row.get("市盈率-动态") else None,
-                    "market_cap": float(row.get("总市值", 0)),
-                    "circulating_cap": float(row.get("流通市值", 0)),
-                    "market": "A股",
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                })
 
             elif market == "hk":
                 # 港股实时行情
@@ -324,54 +435,70 @@ class RealtimeMarketDataService:
                 code = symbol.replace(".HK", "")
                 match = df[df["代码"] == code]
                 if match.empty:
-                    result["error"] = f"未找到 {symbol} 的实时行情"
+                    akshare_error = f"未找到 {symbol} 的实时行情"
+                else:
+                    row = match.iloc[0]
+                    result.update({
+                        "name": row.get("名称", ""),
+                        "price": float(row.get("最新价", 0)),
+                        "change": float(row.get("涨跌额", 0)),
+                        "pct_change": float(row.get("涨跌幅", 0)),
+                        "volume": float(row.get("成交量", 0)),
+                        "amount": float(row.get("成交额", 0)),
+                        "turnover": float(row.get("换手率", 0)),
+                        "high": float(row.get("最高", 0)),
+                        "low": float(row.get("最低", 0)),
+                        "open": float(row.get("开盘", 0)),
+                        "pre_close": float(row.get("昨收", 0)),
+                        "market_cap": float(row.get("总市值", 0)),
+                        "market": "港股",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "_source": "akshare",
+                    })
                     return result
-                row = match.iloc[0]
-                result.update({
-                    "name": row.get("名称", ""),
-                    "price": float(row.get("最新价", 0)),
-                    "change": float(row.get("涨跌额", 0)),
-                    "pct_change": float(row.get("涨跌幅", 0)),
-                    "volume": float(row.get("成交量", 0)),
-                    "amount": float(row.get("成交额", 0)),
-                    "turnover": float(row.get("换手率", 0)),
-                    "high": float(row.get("最高", 0)),
-                    "low": float(row.get("最低", 0)),
-                    "open": float(row.get("开盘", 0)),
-                    "pre_close": float(row.get("昨收", 0)),
-                    "market_cap": float(row.get("总市值", 0)),
-                    "market": "港股",
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                })
 
             elif market == "us":
                 # 美股实时行情
                 df = ak.stock_us_spot_em()
                 match = df[df["代码"] == symbol]
                 if match.empty:
-                    result["error"] = f"未找到 {symbol} 的实时行情"
+                    akshare_error = f"未找到 {symbol} 的实时行情"
+                else:
+                    row = match.iloc[0]
+                    result.update({
+                        "name": row.get("名称", ""),
+                        "price": float(row.get("最新价", 0)),
+                        "change": float(row.get("涨跌额", 0)),
+                        "pct_change": float(row.get("涨跌幅", 0)),
+                        "volume": float(row.get("成交量", 0)),
+                        "amount": float(row.get("成交额", 0)),
+                        "turnover": float(row.get("换手率", 0)),
+                        "high": float(row.get("最高", 0)),
+                        "low": float(row.get("最低", 0)),
+                        "open": float(row.get("开盘", 0)),
+                        "pre_close": float(row.get("昨收", 0)),
+                        "market_cap": float(row.get("总市值", 0)),
+                        "market": "美股",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "_source": "akshare",
+                    })
                     return result
-                row = match.iloc[0]
-                result.update({
-                    "name": row.get("名称", ""),
-                    "price": float(row.get("最新价", 0)),
-                    "change": float(row.get("涨跌额", 0)),
-                    "pct_change": float(row.get("涨跌幅", 0)),
-                    "volume": float(row.get("成交量", 0)),
-                    "amount": float(row.get("成交额", 0)),
-                    "turnover": float(row.get("换手率", 0)),
-                    "high": float(row.get("最高", 0)),
-                    "low": float(row.get("最低", 0)),
-                    "open": float(row.get("开盘", 0)),
-                    "pre_close": float(row.get("昨收", 0)),
-                    "market_cap": float(row.get("总市值", 0)),
-                    "market": "美股",
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                })
 
         except Exception as e:
-            result["error"] = str(e)
+            akshare_error = str(e)
 
+        # ---- 方案2: 新浪财经备用数据源 ----
+        sina_result = RealtimeMarketDataService._fetch_sina_quote(symbol)
+        if sina_result:
+            sina_result["symbol"] = symbol
+            sina_result["error"] = None
+            # 如果 AKShare 有错误信息，保留供参考
+            if akshare_error:
+                sina_result["_akshare_error"] = akshare_error
+            return sina_result
+
+        # ---- 两个方案都失败 ----
+        result["error"] = akshare_error or "所有数据源均无法获取实时行情"
         return result
 
     @staticmethod
@@ -756,10 +883,35 @@ class RealtimeMarketDataService:
 
         这是核心方法：将真实数据转换成结构化的文本描述，
         供 LLM 在分析时使用。
+
+        【重要】AI 必须严格基于以下提供的真实数据进行分析，
+        不得编造或虚构任何价格数据。如果数据缺失，请明确标注"数据不可用"。
         """
         lines = []
-        lines.append("【实时市场数据 - 仅供 AI 分析参考】")
-        lines.append(f"数据时间: {market_data.get('timestamp', 'N/A')}")
+        is_fallback = market_data.get("_fallback", False)
+        quote_source = market_data.get("quote", {}).get("_source", "unknown")
+
+        # ---- 数据来源声明 ----
+        if is_fallback:
+            lines.append("【⚠️ 重要提示：以下数据来自历史K线数据，非实时行情】")
+            lines.append(f"数据时间: {market_data.get('timestamp', 'N/A')}")
+            lines.append("说明：当前实时行情接口不可用，以下价格数据基于最近交易日的历史K线收盘价。")
+            lines.append("涨跌幅、换手率等数据为历史数据，仅供参考，不代表当前实时交易情况。")
+        elif quote_source == "sina_finance":
+            lines.append("【实时市场数据 - 来源：新浪财经】")
+            lines.append(f"数据时间: {market_data.get('timestamp', 'N/A')}")
+            lines.append("说明：以下数据通过新浪财经 API 获取，为实时行情数据。")
+        else:
+            lines.append("【实时市场数据 - 来源：AKShare（东方财富接口）】")
+            lines.append(f"数据时间: {market_data.get('timestamp', 'N/A')}")
+        lines.append("")
+
+        # ---- 重要：AI 不得编造数据的声明 ----
+        lines.append("【\u26a0\ufe0f AI 必须遵守的规则】")
+        lines.append("1. 以下所有价格、涨跌幅、成交量等数据均为真实获取的数据，AI 必须严格基于这些数据进行分析。")
+        lines.append('2. AI 不得编造、虚构或\u201c合理推断\u201d任何价格数据。如果某个字段显示为 N/A 或数据不可用，')
+        lines.append('   请在分析报告中明确标注\u201c数据不可用\u201d，不得自行编造数值。')
+        lines.append('3. 如果数据来源标记为历史K线数据，AI 必须在报告中注明\u201c基于历史数据，非实时行情\u201d。')
         lines.append("")
 
         # 1. 实时行情
@@ -877,7 +1029,13 @@ class RealtimeMarketDataService:
                 lines.append(f"  [{n.get('time', '')}] {n.get('title', '')}")
             lines.append("")
 
-        lines.append("【数据来源】AKShare 实时行情接口 | 数据仅供分析参考，不构成投资建议")
+        # ---- 数据来源脚注 ----
+        if is_fallback:
+            lines.append("【数据来源】历史K线数据（AKShare）| 非实时行情，仅供技术分析参考")
+        elif quote_source == "sina_finance":
+            lines.append("【数据来源】新浪财经 API 实时行情 | 数据仅供分析参考，不构成投资建议")
+        else:
+            lines.append("【数据来源】AKShare（东方财富接口）实时行情 | 数据仅供分析参考，不构成投资建议")
         lines.append("")
 
         return "\n".join(lines)
