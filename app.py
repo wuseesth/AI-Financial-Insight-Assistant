@@ -686,6 +686,112 @@ def load_css():
             padding: 0.45rem 0;
             line-height: 1.6;
         }
+
+        /* ===== v3.0 粘性导航栏 ===== */
+        .sticky-nav {
+            position: sticky; top: 0; z-index: 999;
+            background: rgba(19,23,34,0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(42,45,62,0.3);
+            padding: 0.4rem 0;
+            margin-bottom: 0.6rem;
+            display: flex; gap: 0.3rem; overflow-x: auto;
+        }
+        .sticky-nav a {
+            color: #5D6070; text-decoration: none;
+            font-size: 0.65rem; font-weight: 500;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+        .sticky-nav a:hover {
+            color: #00D4AA;
+            background: rgba(0,212,170,0.06);
+        }
+
+        /* ===== v3.0 骨架屏 ===== */
+        .skeleton-card {
+            background: #1A1D28;
+            border: 1px solid #252836;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .skeleton-line {
+            height: 12px;
+            background: linear-gradient(90deg, #252836 25%, #2A2D3E 50%, #252836 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 3px;
+            margin-bottom: 0.6rem;
+        }
+        .skeleton-line-sm { height: 8px; width: 40%; }
+        .skeleton-line-lg { height: 16px; width: 80%; }
+        .skeleton-block {
+            height: 200px;
+            background: linear-gradient(90deg, #252836 25%, #2A2D3E 50%, #252836 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* ===== v3.0 区块标题 ===== */
+        .section-anchor {
+            scroll-margin-top: 50px;
+        }
+        .section-header {
+            display: flex; align-items: center; gap: 0.4rem;
+            font-size: 0.85rem; font-weight: 700; color: #D1D4DC;
+            padding: 0.5rem 0 0.3rem 0;
+            margin-top: 0.3rem;
+            border-bottom: 1px solid rgba(42,45,62,0.2);
+        }
+        .section-header .section-icon { font-size: 1rem; }
+        .section-header .section-badge {
+            font-size: 0.55rem; color: #5D6070;
+            background: rgba(42,45,62,0.3);
+            padding: 0.05rem 0.3rem; border-radius: 3px;
+            margin-left: 0.3rem;
+        }
+
+        /* ===== v3.0 休市提示 ===== */
+        .market-closed-banner {
+            background: rgba(255,193,7,0.06);
+            border: 1px solid rgba(255,193,7,0.15);
+            border-radius: 4px;
+            padding: 0.35rem 0.55rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.68rem;
+            color: #FFC107;
+        }
+        .market-open-banner {
+            background: rgba(0,212,170,0.06);
+            border: 1px solid rgba(0,212,170,0.15);
+            border-radius: 4px;
+            padding: 0.35rem 0.55rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.68rem;
+            color: #00D4AA;
+        }
+
+        /* ===== v3.0 数据来源标签 ===== */
+        .source-tag {
+            display: inline-block;
+            font-size: 0.55rem;
+            padding: 0.05rem 0.3rem;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+        .source-tag-realtime { background: rgba(0,212,170,0.1); color: #00D4AA; }
+        .source-tag-history { background: rgba(255,193,7,0.1); color: #FFC107; }
+        .source-tag-fallback { background: rgba(0,163,255,0.1); color: #00A3FF; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -2890,11 +2996,107 @@ def _render_fund_flow_tab(market_data: Dict[str, Any]):
         st.info("融资融券数据仅在交易时段可用")
 
 
+def _show_ai_skeleton():
+    """显示 AI 分析加载骨架屏"""
+    st.markdown("""
+    <div class="skeleton-card">
+        <div class="skeleton-line skeleton-line-lg"></div>
+        <div class="skeleton-line" style="width:85%"></div>
+        <div class="skeleton-line" style="width:70%"></div>
+        <div class="skeleton-line" style="width:90%"></div>
+        <div class="skeleton-line" style="width:45%"></div>
+        <div class="skeleton-block"></div>
+        <div class="skeleton-line" style="width:75%"></div>
+        <div class="skeleton-line" style="width:60%"></div>
+        <div class="skeleton-line" style="width:80%"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _render_kline_with_indicators(stock_input: str, period_days: int = 90):
+    """内联渲染K线图 + 技术指标卡片（无额外 spinner）"""
+    try:
+        end_date = datetime.now().strftime("%Y%m%d")
+        start_date = (datetime.now().replace(year=datetime.now().year - 10)).strftime("%Y%m%d")
+        df = MarketDataService.get_stock_history(stock_input.strip(), start_date, end_date)
+        if df is not None and not df.empty:
+            df = df.tail(period_days)
+            fig = MarketDataService.plot_candlestick(
+                df, stock_input,
+                title=f"{stock_input} - 近{period_days}日K线图"
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+            # 技术指标快照
+            indicators = TechnicalIndicators.get_latest_indicators(df)
+            signal = TechnicalIndicators.get_market_signal(df)
+
+            st.markdown("""
+            <div class="section-header">
+                <span class="section-icon">📊</span> 技术指标快照
+                <span class="section-badge">实时计算</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                ma_signal = signal.get("ma_signal", {})
+                st.metric("MA信号", ma_signal.get("signal", "N/A"),
+                          ma_signal.get("description", ""))
+            with col2:
+                macd = indicators.get("macd", {})
+                st.metric("MACD", macd.get("macd_signal", "N/A"),
+                          macd.get("histogram", ""))
+            with col3:
+                rsi_val = indicators.get("rsi", {}).get("rsi", "N/A")
+                st.metric("RSI(14)", rsi_val)
+            with col4:
+                kdj = indicators.get("kdj", {})
+                st.metric("KDJ", kdj.get("kdj_signal", "N/A"),
+                          f"K:{kdj.get('k','')} D:{kdj.get('d','')} J:{kdj.get('j','')}")
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                bb = indicators.get("bollinger", {})
+                st.metric("布林带位置", bb.get("position", "N/A"),
+                          bb.get("width", ""))
+            with col2:
+                vol = indicators.get("volume", {})
+                st.metric("成交量", vol.get("volume_ratio", "N/A"),
+                          vol.get("volume_ma_status", ""))
+            with col3:
+                atr_val = indicators.get("atr", {}).get("atr", "N/A")
+                st.metric("ATR(14)", atr_val)
+            with col4:
+                obv_val = indicators.get("obv", {}).get("obv_signal", "N/A")
+                st.metric("OBV", obv_val)
+
+            # 综合信号
+            overall = signal.get("overall", {})
+            sig = overall.get("signal", "中性")
+            sig_color = {"买入": "#00D4AA", "卖出": "#FF4D4D", "中性": "#FFC107"}.get(sig, "#8892B0")
+            st.markdown(f"""
+            <div style="background:rgba(0,0,0,0.2);border-radius:12px;padding:1.5rem;text-align:center;margin-top:0.5rem;">
+                <div style="color:#8892B0;font-size:0.85rem;margin-bottom:0.5rem;">综合技术信号</div>
+                <div style="font-size:2rem;font-weight:700;color:{sig_color};">{sig}</div>
+                <div style="color:#6A6D7E;font-size:0.85rem;margin-top:0.5rem;">{overall.get("description", "")}</div>
+                <div style="color:#6A6D7E;font-size:0.75rem;margin-top:0.3rem;">置信度: {overall.get("confidence", "N/A")}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            return True
+        else:
+            st.warning(f"⚠️ 未能获取 {stock_input} 的K线数据")
+            return False
+    except Exception as e:
+        st.error(f"❌ 获取K线数据失败: {str(e)}")
+        return False
+
+
 def render_stock_decode_page():
-    """股票深度解码页面（机构级交易终端布局）"""
+    """股票深度解码页面（v3.0 分层加载 + 单页滚动布局 — 摩登/高盛风格）"""
     st.markdown('<div class="page-header">🔍 股票深度解码</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="page-subtitle">机构级多维度分析 — 评分卡 · K线技术分析 · 资金流向 · 深度报告</div>',
+        '<div class="page-subtitle">机构级多维度分析 — 实时报价 · 评分卡 · K线技术分析 · 资金流向 · 深度报告</div>',
         unsafe_allow_html=True,
     )
 
@@ -2937,23 +3139,60 @@ def render_stock_decode_page():
         is_open = market_status["is_open"]
 
         # 显示市场状态横幅
-        status_color = "#00D4AA" if is_open else "#FFC107"
+        banner_class = "market-open-banner" if is_open else "market-closed-banner"
         st.markdown(
-            f'<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:0.5rem 1rem;'
-            f'margin-bottom:0.5rem;border-left:3px solid {status_color};">'
-            f'<span style="color:{status_color};">{market_status["status_text"]}</span>'
+            f'<div class="{banner_class}">'
+            f'{market_status["status_text"]}'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-        # ===== 第一步：获取实时市场数据（带超时控制） =====
+        # ===== 分层加载：先显示骨架屏，逐步填充 =====
+        # 使用占位符实现渐进式渲染
+        placeholder_quote = st.empty()
+        placeholder_score = st.empty()
+        placeholder_kline = st.empty()
+        placeholder_flow = st.empty()
+        placeholder_ai = st.empty()
+
+        # ---- 初始化数据容器 ----
         market_data = {}
         realtime_data_text = ""
         data_error_msg = ""
         is_fallback = False
         fallback_msg = ""
+        scorecard = {}
+        ai_result = {}
+        kline_ok = False
 
-        with st.spinner("📡 正在获取实时市场数据..."):
+        # ===== Level 0: 基础信息（立即显示） =====
+        basic_info = RealtimeMarketDataService.get_stock_basic_info(stock_input_clean)
+        with placeholder_quote.container():
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">📋 基础信息</span>
+                </div>
+                <div class="card-body" style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+                    <span style="color:#B0B4C0;font-size:0.8rem;">代码: <strong style="color:#D1D4DC;">{basic_info.get("symbol", stock_input_clean)}</strong></span>
+                    <span style="color:#B0B4C0;font-size:0.8rem;">市场: <strong style="color:#D1D4DC;">{basic_info.get("market_name", "未知")}</strong></span>
+                    <span style="color:#B0B4C0;font-size:0.8rem;">板块: <strong style="color:#D1D4DC;">{basic_info.get("board_desc", "未知")}</strong></span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # ===== Level 1: 历史K线数据（最快获取，优先显示） =====
+        with placeholder_kline.container():
+            st.markdown("""
+            <div class="section-header" id="section-kline">
+                <span class="section-icon">📈</span> K线技术分析
+                <span class="section-badge">Level 1 · 历史数据</span>
+            </div>
+            """, unsafe_allow_html=True)
+            kline_ok = _render_kline_with_indicators(stock_input_clean, period_days=90)
+
+        # ===== Level 2: 实时行情数据（耗时较长） =====
+        with st.spinner("📡 正在获取实时行情数据..."):
             try:
                 market_data = RealtimeMarketDataService.get_comprehensive_market_data(stock_input_clean)
                 realtime_data_text = RealtimeMarketDataService.format_market_data_for_prompt(market_data)
@@ -2963,11 +3202,11 @@ def render_stock_decode_page():
             except Exception as e:
                 err_str = str(e)
                 if "SSL" in err_str or "DECRYPTION" in err_str:
-                    data_error_msg = "数据源（东方财富）SSL 连接异常，可能是网络环境问题"
+                    data_error_msg = "数据源 SSL 连接异常"
                 else:
                     data_error_msg = f"数据获取异常: {err_str}"
 
-        # ===== 第二步：检查数据是否有效，无效则自动降级到历史数据 =====
+        # 检查数据有效性，无效则降级
         has_valid_data = bool(
             market_data.get("quote", {}).get("price")
             or market_data.get("technical", {}).get("ma5")
@@ -2975,11 +3214,9 @@ def render_stock_decode_page():
         )
 
         if not has_valid_data:
-            # 自动降级：用历史K线数据生成兜底数据
             with st.spinner("📊 实时数据不可用，正在基于历史K线数据生成分析..."):
                 fallback_data = RealtimeMarketDataService.generate_fallback_from_history(stock_input_clean)
                 if fallback_data.get("quote") and fallback_data.get("technical"):
-                    # 合并兜底数据到 market_data（保留已有的任何数据）
                     if not market_data.get("quote"):
                         market_data["quote"] = fallback_data["quote"]
                     if not market_data.get("technical"):
@@ -2987,52 +3224,98 @@ def render_stock_decode_page():
                     market_data["_fallback"] = True
                     is_fallback = True
                     fallback_msg = fallback_data.get("_fallback_message", "使用历史K线数据替代实时数据")
-                    # 重新生成 prompt 文本
                     realtime_data_text = RealtimeMarketDataService.format_market_data_for_prompt(market_data)
                     has_valid_data = True
-                    data_error_msg = ""  # 清除之前的错误信息
+                    data_error_msg = ""
                 else:
                     fallback_err = fallback_data.get("_fallback_error", "无法获取历史数据")
                     if not data_error_msg:
                         data_error_msg = f"实时数据和历史数据均获取失败: {fallback_err}"
 
-        # ===== 第三步：评分引擎计算（基于真实数据，不依赖 AI） =====
-        scorecard = {}
+        # ---- 更新报价面板（Level 2 完成后） ----
+        with placeholder_quote.container():
+            if has_valid_data or market_data.get("quote"):
+                _render_realtime_quote_panel(market_data, stock_input_clean)
+            elif data_error_msg:
+                st.error(f"❌ {data_error_msg}")
+
+        # ===== Level 3: 评分引擎（基于真实数据） =====
         if has_valid_data:
             try:
                 scorecard = ScoringEngine.calculate_all_scores(market_data)
-                # 如果是兜底数据，在评分卡中标记
                 if is_fallback:
                     scorecard["_fallback"] = True
                     scorecard["_fallback_message"] = fallback_msg
             except Exception as e:
                 st.warning(f"⚠️ 评分引擎计算异常: {str(e)}")
 
-        # ===== 第四步：AI 深度分析（使用流式加载，先显示评分和K线） =====
-        ai_result = {}
-        with st.spinner("🔄 AI 正在基于实时数据进行深度分析，请稍候..."):
+        with placeholder_score.container():
+            if scorecard:
+                st.markdown("""
+                <div class="section-header" id="section-score">
+                    <span class="section-icon">🎯</span> 综合评分
+                    <span class="section-badge">Level 3 · 规则引擎</span>
+                </div>
+                """, unsafe_allow_html=True)
+                _render_score_dashboard(scorecard, market_data)
+            elif data_error_msg:
+                st.error(f"❌ 评分数据不可用: {data_error_msg}")
+
+        # ---- 资金流向面板 ----
+        with placeholder_flow.container():
+            if market_data and not is_fallback:
+                st.markdown("""
+                <div class="section-header" id="section-flow">
+                    <span class="section-icon">💰</span> 资金流向分析
+                    <span class="section-badge">Level 3 · 实时数据</span>
+                </div>
+                """, unsafe_allow_html=True)
+                _render_fund_flow_tab(market_data)
+            elif is_fallback:
+                st.info("ℹ️ 当前使用历史K线数据，资金流向数据仅在实时数据可用时展示")
+            else:
+                st.info("市场数据不可用，无法展示资金流向分析")
+
+        # ===== Level 4: AI 深度分析（最慢，异步加载） =====
+        with placeholder_ai.container():
+            st.markdown("""
+            <div class="section-header" id="section-ai">
+                <span class="section-icon">📋</span> AI 深度分析报告
+                <span class="section-badge">Level 4 · AI 生成</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # 先显示骨架屏
+            ai_placeholder = st.empty()
+            with ai_placeholder.container():
+                _show_ai_skeleton()
+
+            # 后台执行 AI 分析
             try:
                 if not st.session_state.api_client:
-                    st.error("⚠️ 请先在侧边栏配置 API 密钥")
-                    return
-                prompt_template = PromptManager.get_prompt("stock_deep_decode")
-                filled_prompt = prompt_template.format(
-                    user_stock_input=stock_input,
-                    realtime_market_data=realtime_data_text,
-                )
-                result_text = st.session_state.api_client.analyze_stock_deep_decode(
-                    stock_input, filled_prompt
-                )
-                ai_result = parse_json_response(result_text)
+                    ai_placeholder.warning("⚠️ 请先在侧边栏配置 API 密钥")
+                else:
+                    prompt_template = PromptManager.get_prompt("stock_deep_decode")
+                    filled_prompt = prompt_template.format(
+                        user_stock_input=stock_input,
+                        realtime_market_data=realtime_data_text,
+                    )
+                    result_text = st.session_state.api_client.analyze_stock_deep_decode(
+                        stock_input, filled_prompt
+                    )
+                    ai_result = parse_json_response(result_text)
 
-                if "error" in ai_result:
-                    st.error(f"❌ AI 分析失败: {ai_result['error']}")
-                    if "raw_content" in ai_result:
-                        with st.expander("查看原始返回内容"):
-                            st.text(ai_result["raw_content"])
-                    # AI 失败不阻断，继续显示评分和K线
+                    if "error" in ai_result:
+                        ai_placeholder.error(f"❌ AI 分析失败: {ai_result['error']}")
+                        if "raw_content" in ai_result:
+                            with st.expander("查看原始返回内容"):
+                                st.text(ai_result["raw_content"])
+                    else:
+                        # 替换骨架屏为实际内容
+                        ai_placeholder.empty()
+                        render_stock_decode_result(ai_result)
             except Exception as e:
-                st.warning(f"⚠️ AI 分析异常: {str(e)}，评分和K线分析仍可用")
+                ai_placeholder.warning(f"⚠️ AI 分析异常: {str(e)}，评分和K线分析仍可用")
 
         # ===== 保存历史 =====
         combined_result = {**ai_result, "_scorecard": scorecard, "_market_data": market_data}
@@ -3042,36 +3325,6 @@ def render_stock_decode_page():
             "result": combined_result,
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
-
-        # ===== Tab 布局 =====
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 综合评分仪表盘", "📈 K线技术分析", "💰 资金流向分析", "📋 深度分析报告"])
-
-        with tab1:
-            if data_error_msg and not is_fallback:
-                st.error(f"❌ {data_error_msg}")
-            if is_fallback:
-                st.info(f"ℹ️ {fallback_msg}")
-            if scorecard:
-                _render_score_dashboard(scorecard, market_data)
-            elif not data_error_msg:
-                st.warning("⚠️ 评分数据不可用，请检查市场数据是否获取成功")
-
-        with tab2:
-            _render_kline_tab(stock_input)
-
-        with tab3:
-            if market_data and not is_fallback:
-                _render_fund_flow_tab(market_data)
-            elif is_fallback:
-                st.info("ℹ️ 当前使用历史K线数据，资金流向数据仅在实时数据可用时展示")
-            else:
-                st.info("市场数据不可用，无法展示资金流向分析")
-
-        with tab4:
-            if ai_result and "error" not in ai_result:
-                render_stock_decode_result(ai_result)
-            else:
-                st.warning("AI 分析结果不可用")
 
     elif analyze_btn:
         st.warning("⚠️ 请输入股票名称或代码")

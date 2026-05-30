@@ -49,14 +49,15 @@ class MarketDataService:
             start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
 
         try:
-            if symbol.endswith(".HK"):
-                # 港股
+            # 使用 detect_market 统一判断市场
+            from services.realtime_market_data import RealtimeMarketDataService
+            market = RealtimeMarketDataService.detect_market(symbol)
+
+            if market == "hk":
                 return MarketDataService._get_hk_stock(symbol, start_date, end_date)
-            elif symbol in ("AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "AMD", "BABA", "JD", "BIDU"):
-                # 美股 - 使用 yfinance 替代方案
+            elif market == "us":
                 return MarketDataService._get_us_stock(symbol, start_date, end_date)
             else:
-                # A 股
                 return MarketDataService._get_a_stock(symbol, start_date, end_date)
         except Exception as e:
             print(f"获取行情数据失败 [{symbol}]: {e}")
